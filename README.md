@@ -87,16 +87,31 @@ python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', devic
 
 ## Usage
 
-### 起動
+### Mac アプリとして起動 (推奨)
+
+```bash
+# .app をビルド (初回のみ / コード変更後)
+source .venv/bin/activate
+python scripts/build_app.py
+
+# 起動
+open dist/VoxBridge.app
+
+# /Applications にインストールしたい場合
+python scripts/build_app.py --install
+open /Applications/VoxBridge.app
+```
+
+- メニューバーに **VB** が表示されたら起動完了
+- 終了はメニューバーの **VB** > **Quit VoxBridge**
+- ログ: `~/Library/Logs/VoxBridge.log`
+
+### CLI として起動
 
 ```bash
 source .venv/bin/activate
 python -m voxbridge
-```
 
-### 起動オプション
-
-```bash
 # STT モデルを事前ロード (起動は遅いが初回認識が速い)
 python -m voxbridge --preload
 
@@ -110,7 +125,7 @@ python -m voxbridge -c /path/to/config.yaml
 2. キーを **離す** → 録音停止 → 文字起こし → 整形 → テキスト入力
 3. Terminal で Claude Code 実行中なら、自動で Enter も送信
 
-### バックグラウンド起動
+### バックグラウンド起動 (CLI)
 
 ```bash
 nohup python -m voxbridge --preload > /tmp/voxbridge.log 2>&1 &

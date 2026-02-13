@@ -156,11 +156,15 @@ class VoxBridgeApp:
 
     def run(self) -> None:
         """Start the application (blocks on main thread)."""
+        hotkey = self.config.get("hotkey", "alt_r")
         print("[VoxBridge] Starting...")
         print(f"[VoxBridge] STT model: {self.config['stt']['model']}")
         print(f"[VoxBridge] LLM model: {self.config['formatter']['model']}")
         print(f"[VoxBridge] Language: {self.config['language']}")
         print("[VoxBridge] Ready. Hold the hotkey to record, release to process.")
+
+        # Show startup notification in overlay
+        self.overlay.show(f"VoxBridge Ready ({hotkey})", color="success", auto_hide=True)
 
         # Handle Ctrl+C gracefully
         signal.signal(signal.SIGINT, lambda *_: AppHelper.stopEventLoop())

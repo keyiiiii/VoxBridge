@@ -1,0 +1,44 @@
+# VoxBridge Configuration
+# ホットキー: pynput の Key 名 (例: alt_r, ctrl_r, f5, cmd_r)
+hotkey: "alt_r"  # Right Option key
+
+# 音声認識の言語 (ISO 639-1)
+language: "ja"
+
+# 録音設定
+recording:
+  sample_rate: 16000
+  max_duration: 60  # 秒
+
+# STT (Speech-to-Text) 設定
+stt:
+  model: "small"       # tiny, base, small, medium, large-v3
+  device: "cpu"        # cpu (Apple Silicon は CPU でも高速)
+  compute_type: "int8" # int8, float16, float32
+
+# テキスト整形 (ローカル LLM) 設定
+formatter:
+  enabled: true
+  model: "qwen2.5:7b"           # Ollama モデル名
+  prompt_file: "prompts/format.txt"
+  timeout: 30                    # 秒
+
+# テキスト入力注入設定
+injector:
+  # Enter キーを送信するアプリ名リスト
+  send_enter_for:
+    - "Terminal"
+    - "iTerm2"
+    - "Alacritty"
+    - "kitty"
+    - "Warp"
+  enter_delay: 0.15  # Enter 送信前の待機時間（秒）
+
+# オーバーレイ UI 設定
+overlay:
+  enabled: true
+  width: 260
+  height: 36
+  margin: 20
+  opacity: 0.88
+  auto_hide_delay: 2.0  # 秒

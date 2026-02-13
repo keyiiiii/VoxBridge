@@ -196,7 +196,7 @@ def build_app() -> str:
         "CFBundleExecutable": APP_NAME,
         "CFBundleIconFile": "icon",
         "CFBundlePackageType": "APPL",
-        "LSUIElement": True,
+        "LSUIElement": False,
         "LSMinimumSystemVersion": "14.0",
         "NSMicrophoneUsageDescription": (
             "VoxBridge uses the microphone to record your voice for "
@@ -208,7 +208,7 @@ def build_app() -> str:
         plistlib.dump(plist, f)
     print(f"  Plist: {plist_path}")
 
-    # --- Executable ---
+    # --- Executable (bash launcher with exec) ---
     exec_path = os.path.join(macos_dir, APP_NAME)
     with open(exec_path, "w") as f:
         f.write(f"""\

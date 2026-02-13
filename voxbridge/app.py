@@ -4,7 +4,7 @@ import signal
 import threading
 
 import numpy as np
-from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+from AppKit import NSApplication, NSApplicationActivationPolicyRegular
 from pynput import keyboard
 from PyObjCTools import AppHelper
 
@@ -22,13 +22,17 @@ class VoxBridgeApp:
     def __init__(self, config_path: str | None = None):
         self.config = load_config(config_path)
 
-        # NSApplication setup (accessory = no dock icon)
+        # NSApplication setup
         self._nsapp = NSApplication.sharedApplication()
-        self._nsapp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        self._nsapp.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+        self._nsapp.activateIgnoringOtherApps_(True)
 
         # UI components (main thread)
         self.overlay = Overlay.create(self.config["overlay"])
         self.status_bar = StatusBarItem()
+
+        # Deactivate so we don't steal focus from the current app
+        self._nsapp.deactivate()
 
         # Core components
         self.recorder = Recorder(

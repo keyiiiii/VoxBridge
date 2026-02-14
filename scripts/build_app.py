@@ -334,51 +334,96 @@ def _compile_launcher(output_path: str, python_version: str) -> None:
 # ---------------------------------------------------------------------------
 # Fix dylib references for portability
 # ---------------------------------------------------------------------------
+def _collect_dylib_id_map(frameworks_dir: str, python_version: str) -> dict:
+    """Scan bundled framework dylibs and build {old_install_name: (new_name, path)} map."""
+    rpath_prefix = f"@rpath/Python.framework/Versions/{python_version}"
+    fw_ver_dir = os.path.join(
+        frameworks_dir, "Python.framework", "Versions", python_version,
+    )
+    id_map: dict[str, tuple[str, str]] = {}
+
+    for root, _dirs, files in os.walk(fw_ver_dir):
+        for fname in files:
+            if not fname.endswith(".dylib") and fname != "Python":
+                continue
+            fpath = os.path.join(root, fname)
+            if os.path.islink(fpath):
+                continue
+            # Get current install name
+            result = subprocess.run(
+                ["otool", "-D", fpath],
+                capture_output=True, text=True, check=False,
+            )
+            lines = result.stdout.strip().split("\n")
+            if len(lines) < 2:
+                continue
+            old_id = lines[-1].strip()
+            if old_id.startswith("@"):
+                continue  # Already relocated
+
+            # Compute new @rpath-based install name
+            rel = os.path.relpath(fpath, fw_ver_dir)  # e.g. "Python" or "lib/libssl.3.dylib"
+            new_id = f"{rpath_prefix}/{rel}"
+            id_map[old_id] = (new_id, fpath)
+
+    return id_map
+
+
 def _fix_dylib_paths(
     app_contents: str, python_version: str, old_install_name: str,
 ) -> None:
     """Rewrite dylib install names so the bundle doesn't reference host paths."""
-    new_install_name = (
-        f"@rpath/Python.framework/Versions/{python_version}/Python"
-    )
     rpath = "@executable_path/../Frameworks"
+    frameworks_dir = os.path.join(app_contents, "Frameworks")
 
-    bundled_dylib = os.path.join(
-        app_contents, "Frameworks", "Python.framework",
-        "Versions", python_version, "Python",
-    )
-    bundled_dylib_real = os.path.realpath(bundled_dylib)
+    # Build a map of all dylibs that need relocation (Python, OpenSSL, etc.)
+    id_map = _collect_dylib_id_map(frameworks_dir, python_version)
 
-    # Fix the Python dylib's own install name
-    subprocess.run(
-        ["install_name_tool", "-id", new_install_name, bundled_dylib],
-        check=True,
-    )
+    # Ensure the Python dylib is in the map (fallback for non-standard layouts)
+    if old_install_name not in id_map:
+        bundled_dylib = os.path.join(
+            frameworks_dir, "Python.framework",
+            "Versions", python_version, "Python",
+        )
+        new_name = f"@rpath/Python.framework/Versions/{python_version}/Python"
+        id_map[old_install_name] = (new_name, bundled_dylib)
 
-    # Fix all .so and .dylib files that reference the old Python dylib
+    # Fix each dylib's own install name
+    for old_id, (new_id, fpath) in id_map.items():
+        subprocess.run(
+            ["install_name_tool", "-id", new_id, fpath],
+            check=True,
+        )
+        print(f"  Dylib id: {old_id} -> {new_id}")
+
+    # Fix all .so and .dylib references throughout the bundle
+    fixed_reals = {os.path.realpath(fpath) for _, (_, fpath) in id_map.items()}
     for root, _dirs, files in os.walk(app_contents):
         for fname in files:
-            if not fname.endswith((".so", ".dylib")):
+            if not fname.endswith((".so", ".dylib")) and fname != "Python":
                 continue
             fpath = os.path.join(root, fname)
-            # Skip symlinks and the Python dylib itself
             if os.path.islink(fpath):
                 continue
-            if os.path.realpath(fpath) == bundled_dylib_real:
+            if os.path.realpath(fpath) in fixed_reals:
+                # Also fix cross-references between framework dylibs
+                for old_id, (new_id, _) in id_map.items():
+                    subprocess.run(
+                        ["install_name_tool", "-change", old_id, new_id, fpath],
+                        capture_output=True, check=False,
+                    )
                 continue
-            # Update the Python dylib reference
-            subprocess.run(
-                ["install_name_tool", "-change",
-                 old_install_name, new_install_name, fpath],
-                capture_output=True, check=False,
-            )
+            # Update all known references
+            for old_id, (new_id, _) in id_map.items():
+                subprocess.run(
+                    ["install_name_tool", "-change", old_id, new_id, fpath],
+                    capture_output=True, check=False,
+                )
             # Add rpath so @rpath references can resolve
             subprocess.run(
                 ["install_name_tool", "-add_rpath", rpath, fpath],
                 capture_output=True, check=False,
             )
-
-    print(f"  Dylib paths: {old_install_name} -> {new_install_name}")
 
 
 # ---------------------------------------------------------------------------

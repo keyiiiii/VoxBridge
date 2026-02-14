@@ -3,6 +3,7 @@
 import time
 
 from AppKit import NSPasteboard, NSPasteboardTypeString, NSWorkspace
+from ApplicationServices import AXIsProcessTrusted
 from Quartz import (
     CGEventCreateKeyboardEvent,
     CGEventPost,
@@ -25,16 +26,18 @@ class Injector:
             "send_enter_for", ["Terminal", "iTerm2"]
         )
         self.enter_delay = config.get("enter_delay", 0.15)
+        self.clipboard_restore_delay = config.get("clipboard_restore_delay", 0.3)
 
-    def inject(self, text: str) -> None:
+    def inject(self, text: str) -> bool:
         """Inject text into the active application via paste.
 
-        1. Save current clipboard
-        2. Set text to clipboard
-        3. Send Cmd+V
-        4. Optionally send Enter (for terminal apps)
-        5. Restore previous clipboard
+        Returns True if text was injected (Cmd+V), False if only copied
+        to clipboard (Accessibility permission missing).
         """
+        trusted = AXIsProcessTrusted()
+        active = self.get_active_app_name()
+        print(f"[Injector] AXIsProcessTrusted={trusted}, target={active}")
+
         pb = NSPasteboard.generalPasteboard()
 
         # Save existing clipboard content
@@ -44,6 +47,15 @@ class Injector:
         pb.clearContents()
         pb.setString_forType_(text, NSPasteboardTypeString)
         time.sleep(0.05)
+
+        # Verify clipboard was set
+        verify = pb.stringForType_(NSPasteboardTypeString)
+        print(f"[Injector] Clipboard set: {verify is not None}")
+
+        if not trusted:
+            # No Accessibility permission – leave text in clipboard for manual paste
+            print("[Injector] Skipping CGEventPost (no Accessibility permission)")
+            return False
 
         # Paste via Cmd+V
         _send_keystroke(_KEY_V, flags=kCGEventFlagMaskCommand)
@@ -55,10 +67,12 @@ class Injector:
             _send_keystroke(_KEY_RETURN)
 
         # Restore previous clipboard
-        time.sleep(0.1)
+        time.sleep(self.clipboard_restore_delay)
         pb.clearContents()
         if old_content:
             pb.setString_forType_(old_content, NSPasteboardTypeString)
+
+        return True
 
     def _should_send_enter(self) -> bool:
         """Check if the active application is a terminal that should receive Enter."""

@@ -1,5 +1,5 @@
 # VoxBridge Configuration
-# ホットキー: pynput の Key 名 (例: alt_r, ctrl_r, f5, cmd_r)
+# ホットキー: 修飾キー名 (例: alt_r, alt_l, ctrl_r, ctrl_l, shift_r, shift_l)
 hotkey: "alt_r"  # Right Option key
 
 # 音声認識の言語 (ISO 639-1)

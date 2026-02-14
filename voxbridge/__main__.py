@@ -26,7 +26,7 @@ def main():
 
     if args.preload:
         print("[VoxBridge] Pre-loading STT model...")
-        _ = app.stt
+        app.stt.preload()
 
     app.run()
 

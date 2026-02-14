@@ -24,6 +24,7 @@ _DEFAULT_CONFIG = {
     "injector": {
         "send_enter_for": ["Terminal", "iTerm2", "Alacritty", "kitty", "Warp"],
         "enter_delay": 0.15,
+        "clipboard_restore_delay": 0.3,
     },
     "overlay": {
         "enabled": True,

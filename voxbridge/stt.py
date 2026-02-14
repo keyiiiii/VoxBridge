@@ -25,6 +25,10 @@ class STT:
             print("[STT] Model loaded.")
         return self._model
 
+    def preload(self) -> None:
+        """Eagerly load the Whisper model (called with --preload)."""
+        self._ensure_model()
+
     def transcribe(self, audio: np.ndarray, language: str = "ja") -> str:
         """Transcribe audio numpy array to text.
 

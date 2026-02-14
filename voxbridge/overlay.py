@@ -1,8 +1,6 @@
 """macOS overlay window and menu bar status item."""
 
 from AppKit import (
-    NSApplication,
-    NSApplicationActivationPolicyAccessory,
     NSBackingStoreBuffered,
     NSColor,
     NSFont,
@@ -16,7 +14,7 @@ from AppKit import (
     NSVariableStatusItemLength,
     NSWindowStyleMaskBorderless,
 )
-from Foundation import NSObject, NSTimer
+from Foundation import NSObject
 import objc
 
 # NSPanel style: borderless + non-activating (shows without stealing focus)
@@ -48,7 +46,6 @@ class Overlay(NSObject):
         margin = config.get("margin", 20)
         opacity = config.get("opacity", 0.88)
         self._auto_hide_delay = config.get("auto_hide_delay", 2.0)
-        self._hide_timer = None
 
         # Position: bottom-right of main screen
         screen = NSScreen.mainScreen().visibleFrame()
@@ -108,6 +105,7 @@ class Overlay(NSObject):
         colors = {
             "recording": (0.6, 0.1, 0.1, 0.92),
             "success": (0.1, 0.4, 0.1, 0.92),
+            "warning": (0.6, 0.5, 0.0, 0.92),
             "error": (0.6, 0.2, 0.0, 0.92),
             "default": (0.1, 0.1, 0.1, 0.92),
         }
@@ -118,16 +116,14 @@ class Overlay(NSObject):
 
         self._window.orderFrontRegardless()
 
-        # Cancel any pending hide timer
-        if self._hide_timer:
-            self._hide_timer.invalidate()
-            self._hide_timer = None
+        # Cancel any pending auto-hide
+        NSObject.cancelPreviousPerformRequestsWithTarget_selector_object_(
+            self, "hideOverlay:", None
+        )
 
         if auto_hide:
-            self._hide_timer = (
-                NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
-                    self._auto_hide_delay, self, "hideOverlay:", None, False
-                )
+            self.performSelector_withObject_afterDelay_(
+                "hideOverlay:", None, self._auto_hide_delay
             )
 
     @objc.python_method
@@ -142,14 +138,27 @@ class Overlay(NSObject):
         self.hide()
 
 
-class StatusBarItem:
+class StatusBarItem(NSObject):
     """Menu bar status item for VoxBridge."""
 
-    def __init__(self, quit_callback=None):
+    @classmethod
+    @objc.python_method
+    def create(cls) -> "StatusBarItem":
+        obj = cls.alloc().init()
+        obj._setup()
+        return obj
+
+    @objc.python_method
+    def _setup(self):
         self._status_bar = NSStatusBar.systemStatusBar()
         self._item = self._status_bar.statusItemWithLength_(
             NSVariableStatusItemLength
         )
+        # Set title via button API (modern macOS) and direct API (fallback)
+        button = self._item.button()
+        print(f"[StatusBar] button={button}, item={self._item}")
+        if button:
+            button.setTitle_("VB")
         self._item.setTitle_("VB")
 
         menu = NSMenu.alloc().init()
@@ -168,6 +177,8 @@ class StatusBarItem:
         menu.addItem_(quit_item)
 
         self._item.setMenu_(menu)
+        print(f"[StatusBar] Menu bar item created with title='VB'")
 
+    @objc.python_method
     def set_title(self, title: str) -> None:
         self._item.setTitle_(title)

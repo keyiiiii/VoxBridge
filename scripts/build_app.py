@@ -384,7 +384,7 @@ def _fix_dylib_paths(
 # ---------------------------------------------------------------------------
 # Build .app bundle
 # ---------------------------------------------------------------------------
-def build_app() -> str:
+def build_app(version: str = VERSION) -> str:
     """Create a self-contained VoxBridge.app bundle. Returns path to .app."""
     if os.path.exists(APP_PATH):
         shutil.rmtree(APP_PATH)
@@ -460,8 +460,8 @@ def build_app() -> str:
         "CFBundleName": APP_NAME,
         "CFBundleDisplayName": APP_NAME,
         "CFBundleIdentifier": BUNDLE_ID,
-        "CFBundleVersion": VERSION,
-        "CFBundleShortVersionString": VERSION,
+        "CFBundleVersion": version,
+        "CFBundleShortVersionString": version,
         "CFBundleExecutable": APP_NAME,
         "CFBundleIconFile": "icon",
         "CFBundlePackageType": "APPL",
@@ -532,11 +532,16 @@ def main():
         action="store_true",
         help="Copy to /Applications after building",
     )
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="Override version string (e.g. '0.2.0')",
+    )
     args = parser.parse_args()
 
     print(f"Building {APP_NAME}.app ...")
     os.makedirs(DIST_DIR, exist_ok=True)
-    app_path = build_app()
+    app_path = build_app(version=args.version or VERSION)
 
     if args.install:
         dest = f"/Applications/{APP_NAME}.app"

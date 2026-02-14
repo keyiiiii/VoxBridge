@@ -1,0 +1,50 @@
+name: Build and Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: macos-14          # Apple Silicon (arm64)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Framework Python の確認 (なければビルドスクリプトがエラーで止まる)
+      - name: Verify framework Python
+        run: |
+          python3 -c "import sysconfig; fw=sysconfig.get_config_var('PYTHONFRAMEWORKPREFIX'); print(f'Framework: {fw}'); assert fw"
+
+      # タグからバージョン取得 (v0.2.0 → 0.2.0)
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # .app ビルド
+      - name: Build VoxBridge.app
+        run: python3 scripts/build_app.py --version "${{ steps.version.outputs.version }}"
+
+      # zip 圧縮 (-y でシンボリックリンク保持)
+      - name: Create zip
+        run: |
+          cd dist
+          zip -r -y "VoxBridge-${{ steps.version.outputs.version }}-arm64.zip" VoxBridge.app
+
+      # SHA256 チェックサム生成
+      - name: Generate checksum
+        run: |
+          cd dist
+          shasum -a 256 "VoxBridge-${{ steps.version.outputs.version }}-arm64.zip" > "VoxBridge-${{ steps.version.outputs.version }}-arm64.zip.sha256"
+
+      # GitHub Releases に公開
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/VoxBridge-*.zip
+            dist/VoxBridge-*.sha256

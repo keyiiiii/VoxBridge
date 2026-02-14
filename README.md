@@ -38,9 +38,8 @@ macOS 向け完全ローカル音声入力ツール。ホットキーを押し�
 
 ## Requirements
 
-- **macOS 14+** (Sonoma 以降、Apple Silicon 推奨)
-- **Xcode Command Line Tools** (`xcode-select --install`)
-- **Python 3.11+** (Homebrew: `brew install python`)
+- **macOS 14+** (Sonoma 以降、Apple Silicon)
+- **Ollama** (オプション) — テキスト整形を使う場合のみ
 
 ### Ollama (オプション)
 
@@ -70,11 +69,27 @@ VoxBridge は以下の macOS 権限が必要。初回起動時にダイアログ
 
 設定場所: **システム設定 > プライバシーとセキュリティ**
 
-> **Note**: 以前のバージョンで必要だった「入力監視」権限は不要になった (pynput から NSEvent に移行したため)。
-
 ## Quick Start
 
-### .app をビルドして起動 (推奨)
+### GitHub Releases からインストール (推奨)
+
+[Releases ページ](https://github.com/keyiiiii/VoxBridge/releases/latest) から `VoxBridge-*-arm64.zip` をダウンロード。
+
+```bash
+# 展開して /Applications に配置
+unzip VoxBridge-*-arm64.zip -d /Applications
+
+# 起動
+open /Applications/VoxBridge.app
+```
+
+> **Note**: Downloads フォルダから直接起動すると macOS の App Translocation により一時パスで実行され、アクセシビリティ権限が正しく機能しない。必ず `/Applications` やホームフォルダなど別の場所に移動してから起動すること。
+
+初回起動時に Gatekeeper の警告が出る場合は **システム設定 > プライバシーとセキュリティ > 「このまま開く」** で許可する。
+
+メニューバーに **VB** が表示されたら起動完了。
+
+### ソースからビルドして起動
 
 ```bash
 git clone https://github.com/keyiiiii/VoxBridge.git
@@ -87,9 +102,7 @@ python3 scripts/build_app.py
 open dist/VoxBridge.app
 ```
 
-メニューバーに **VB** が表示されたら起動完了。
-
-### /Applications にインストール
+`--install` で `/Applications` に直接インストール:
 
 ```bash
 python3 scripts/build_app.py --install
@@ -192,6 +205,7 @@ injector:
 - **アクセシビリティ** 権限を確認
 - 権限がない場合、テキストはクリップボードにコピーされるので手動で Cmd+V でペースト可能
 - オーバーレイに "Copied (要 Accessibility 許可)" と表示される場合は権限が未付与
+- Downloads フォルダから直接起動していないか確認 (App Translocation により権限が機能しない)
 
 ### Ollama 関連
 
@@ -222,6 +236,15 @@ Ollama が利用できない場合は自動的に整形をスキップするた�
 python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
 ```
 
+## Release
+
+`v*` タグを push すると GitHub Actions が自動でビルド・リリースを作成する。
+
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
 ## Project Structure
 
 ```
@@ -231,9 +254,14 @@ VoxBridge/
 ├── config.yaml                 # 設定ファイル
 ├── prompts/
 │   └── format.txt              # 整形プロンプトテンプレート
+├── resources/
+│   └── icon.icns               # アプリアイコン (プリビルト)
 ├── scripts/
 │   ├── build_app.py            # .app ビルドスクリプト
 │   └── launch.sh               # CLI 起動ヘルパー
+├── .github/
+│   └── workflows/
+│       └── release.yml         # リリース自動化 (タグ push → ビルド → GitHub Releases)
 ├── voxbridge/
 │   ├── __init__.py
 │   ├── __main__.py             # エントリーポイント

@@ -498,7 +498,12 @@ def build_app(version: str = VERSION) -> str:
 
     # --- Icon ---
     icon_path = os.path.join(resources, "icon.icns")
-    generate_icon(icon_path)
+    prebuilt_icon = os.path.join(PROJECT_DIR, "resources", "icon.icns")
+    if os.path.exists(prebuilt_icon):
+        shutil.copy2(prebuilt_icon, icon_path)
+        print(f"  Icon: {prebuilt_icon} (prebuilt)")
+    else:
+        generate_icon(icon_path)
 
     # --- Info.plist ---
     plist = {

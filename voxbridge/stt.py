@@ -45,12 +45,12 @@ class STT:
         """Eagerly load the Whisper model (called with --preload)."""
         self._ensure_model()
 
-    def transcribe(self, audio: np.ndarray, language: str = "ja") -> str:
+    def transcribe(self, audio: np.ndarray, language: str | None = None) -> str:
         """Transcribe audio numpy array to text.
 
         Args:
             audio: float32 numpy array, mono, 16kHz
-            language: Language code (ISO 639-1)
+            language: Language code (ISO 639-1), or None for auto-detect
 
         Returns:
             Transcribed text string
@@ -64,6 +64,9 @@ class STT:
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=500),
         )
+
+        if language is None:
+            print(f"[STT] Detected language: {info.language} ({info.language_probability:.0%})")
 
         text = "".join(segment.text for segment in segments)
         return text.strip()

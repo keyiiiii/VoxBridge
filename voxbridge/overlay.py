@@ -149,21 +149,35 @@ _HOTKEY_LABELS = {
 }
 
 
+# Available STT model sizes
+_STT_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
+
+
 class StatusBarItem(NSObject):
     """Menu bar status item for VoxBridge."""
 
     @classmethod
     @objc.python_method
     def create(cls, current_hotkey: str = "alt_r",
-               on_hotkey_change=None) -> "StatusBarItem":
+               current_model: str = "small",
+               launch_at_login: bool = False,
+               on_hotkey_change=None,
+               on_model_change=None,
+               on_launch_at_login_change=None) -> "StatusBarItem":
         obj = cls.alloc().init()
-        obj._setup(current_hotkey, on_hotkey_change)
+        obj._setup(current_hotkey, current_model, launch_at_login,
+                    on_hotkey_change, on_model_change,
+                    on_launch_at_login_change)
         return obj
 
     @objc.python_method
-    def _setup(self, current_hotkey: str, on_hotkey_change):
+    def _setup(self, current_hotkey, current_model, launch_at_login,
+               on_hotkey_change, on_model_change, on_launch_at_login_change):
         self._on_hotkey_change = on_hotkey_change
+        self._on_model_change = on_model_change
+        self._on_launch_at_login_change = on_launch_at_login_change
         self._current_hotkey = current_hotkey
+        self._current_model = current_model
         self._status_bar = NSStatusBar.systemStatusBar()
         self._item = self._status_bar.statusItemWithLength_(
             NSVariableStatusItemLength
@@ -205,6 +219,36 @@ class StatusBarItem(NSObject):
         hotkey_parent.setSubmenu_(hotkey_menu)
         menu.addItem_(hotkey_parent)
 
+        # Model submenu
+        model_menu = NSMenu.alloc().init()
+        self._model_items = {}
+        for model_name in _STT_MODELS:
+            item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                model_name, "modelSelected:", ""
+            )
+            item.setTarget_(self)
+            item.setRepresentedObject_(model_name)
+            if model_name == current_model:
+                item.setState_(1)
+            model_menu.addItem_(item)
+            self._model_items[model_name] = item
+
+        model_parent = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Speech Model", None, ""
+        )
+        model_parent.setSubmenu_(model_menu)
+        menu.addItem_(model_parent)
+
+        menu.addItem_(NSMenuItem.separatorItem())
+
+        # Launch at Login toggle
+        self._login_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Launch at Login", "toggleLaunchAtLogin:", ""
+        )
+        self._login_item.setTarget_(self)
+        self._login_item.setState_(1 if launch_at_login else 0)
+        menu.addItem_(self._login_item)
+
         menu.addItem_(NSMenuItem.separatorItem())
 
         quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
@@ -220,12 +264,29 @@ class StatusBarItem(NSObject):
         key = sender.representedObject()
         if key == self._current_hotkey:
             return
-        # Update checkmarks
         for k, item in self._hotkey_items.items():
             item.setState_(1 if k == key else 0)
         self._current_hotkey = key
         if self._on_hotkey_change:
             self._on_hotkey_change(key)
+
+    def modelSelected_(self, sender):
+        """Menu callback when a model option is selected."""
+        model_name = sender.representedObject()
+        if model_name == self._current_model:
+            return
+        for m, item in self._model_items.items():
+            item.setState_(1 if m == model_name else 0)
+        self._current_model = model_name
+        if self._on_model_change:
+            self._on_model_change(model_name)
+
+    def toggleLaunchAtLogin_(self, sender):
+        """Menu callback for launch-at-login toggle."""
+        new_state = sender.state() == 0  # toggle
+        sender.setState_(1 if new_state else 0)
+        if self._on_launch_at_login_change:
+            self._on_launch_at_login_change(new_state)
 
     @objc.python_method
     def set_title(self, title: str) -> None:

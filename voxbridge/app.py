@@ -7,7 +7,7 @@ import subprocess
 import threading
 
 import numpy as np
-from AppKit import NSApplication, NSApplicationActivationPolicyAccessory, NSEvent
+from AppKit import NSApplication, NSApplicationActivationPolicyAccessory, NSEvent, NSBundle
 from ApplicationServices import AXIsProcessTrustedWithOptions
 from Foundation import NSObject
 from PyObjCTools import AppHelper
@@ -32,6 +32,10 @@ _MODIFIER_KEY_CODES = {
 
 # NSEvent masks
 _NSFlagsChangedMask = 1 << 12
+_NSKeyDownMask = 1 << 10
+
+# Key codes
+_KEY_ESCAPE = 53
 
 # Modifier flags
 _MODIFIER_FLAGS = {
@@ -60,9 +64,14 @@ class _AppDelegate(NSObject):
         app = self._voxbridge
         app.overlay = Overlay.create(app.config["overlay"])
         hotkey = app._get_effective_hotkey()
+        model = app._get_effective_model()
         app.status_bar = StatusBarItem.create(
             current_hotkey=hotkey,
+            current_model=model,
+            launch_at_login=app._is_launch_at_login(),
             on_hotkey_change=app._on_hotkey_change,
+            on_model_change=app._on_model_change,
+            on_launch_at_login_change=app._set_launch_at_login,
         )
 
         # Start hotkey listener now that event loop is running
@@ -134,7 +143,9 @@ class VoxBridgeApp:
     @property
     def stt(self) -> STT:
         if self._stt is None:
-            self._stt = STT(self.config["stt"])
+            stt_config = dict(self.config["stt"])
+            stt_config["model"] = self._get_effective_model()
+            self._stt = STT(stt_config)
         return self._stt
 
     @property
@@ -261,6 +272,64 @@ class VoxBridgeApp:
         with open(self._HOTKEY_FILE, "w") as f:
             f.write(key)
 
+    _MODEL_FILE = os.path.join(_SUPPORT_DIR, "stt_model")
+    _LAUNCH_AT_LOGIN_FILE = os.path.join(_SUPPORT_DIR, "launch_at_login")
+
+    def _get_effective_model(self) -> str:
+        """Return STT model: user override > config.yaml > default."""
+        try:
+            with open(self._MODEL_FILE, "r") as f:
+                saved = f.read().strip()
+                if saved:
+                    return saved
+        except FileNotFoundError:
+            pass
+        return self.config["stt"].get("model", "small")
+
+    def _on_model_change(self, model_name: str) -> None:
+        """Called when user selects a new STT model from the menu."""
+        os.makedirs(self._SUPPORT_DIR, exist_ok=True)
+        with open(self._MODEL_FILE, "w") as f:
+            f.write(model_name)
+        # Reset loaded model so next transcription uses the new one
+        self._stt = None
+        self._show_overlay(f"STT Model: {model_name}", color="success", auto_hide=True)
+        print(f"[VoxBridge] STT model changed to: {model_name}")
+
+    def _is_launch_at_login(self) -> bool:
+        """Check if launch-at-login is enabled."""
+        return os.path.isfile(self._LAUNCH_AT_LOGIN_FILE)
+
+    def _set_launch_at_login(self, enabled: bool) -> None:
+        """Enable or disable launch-at-login via macOS Login Items."""
+        os.makedirs(self._SUPPORT_DIR, exist_ok=True)
+        bundle_path = NSBundle.mainBundle().bundlePath()
+        if not bundle_path.endswith(".app"):
+            self._show_overlay("Login item: .app only", color="warning", auto_hide=True)
+            return
+
+        if enabled:
+            # Register with Login Items via osascript
+            subprocess.run([
+                "osascript", "-e",
+                f'tell application "System Events" to make login item at end '
+                f'with properties {{path:"{bundle_path}", hidden:false}}'
+            ], capture_output=True)
+            with open(self._LAUNCH_AT_LOGIN_FILE, "w") as f:
+                f.write("1")
+            self._show_overlay("Launch at login: ON", color="success", auto_hide=True)
+            print(f"[VoxBridge] Launch at login enabled: {bundle_path}")
+        else:
+            app_name = os.path.basename(bundle_path).replace(".app", "")
+            subprocess.run([
+                "osascript", "-e",
+                f'tell application "System Events" to delete login item "{app_name}"'
+            ], capture_output=True)
+            if os.path.isfile(self._LAUNCH_AT_LOGIN_FILE):
+                os.remove(self._LAUNCH_AT_LOGIN_FILE)
+            self._show_overlay("Launch at login: OFF", color="success", auto_hide=True)
+            print("[VoxBridge] Launch at login disabled")
+
     def _on_hotkey_change(self, key: str) -> None:
         """Called when user selects a new hotkey from the menu."""
         self._hotkey_code = _MODIFIER_KEY_CODES.get(key)
@@ -285,6 +354,13 @@ class VoxBridgeApp:
             NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
                 _NSFlagsChangedMask, self._on_flags_changed_local,
             )
+            # Esc key to cancel recording
+            NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+                _NSKeyDownMask, self._on_key_down,
+            )
+            NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+                _NSKeyDownMask, self._on_key_down_local,
+            )
             print(f"[VoxBridge] Hotkey: {hotkey_name} (push-to-talk, NSEvent monitor)")
         else:
             print(f"[VoxBridge] WARNING: Unsupported hotkey '{hotkey_name}'")
@@ -301,6 +377,23 @@ class VoxBridgeApp:
         """Local monitor callback (when VoxBridge window is focused)."""
         self._on_flags_changed(event)
         return event  # Local monitors must return the event
+
+    def _on_key_down(self, event) -> None:
+        """Global monitor for key-down events (Esc to cancel)."""
+        if event.keyCode() == _KEY_ESCAPE and self._recording:
+            self._cancel_recording()
+
+    def _on_key_down_local(self, event):
+        """Local monitor for key-down events."""
+        self._on_key_down(event)
+        return event
+
+    def _cancel_recording(self) -> None:
+        """Cancel the current recording and discard audio."""
+        self._recording = False
+        self.recorder.stop()  # discard audio
+        self._show_overlay("Cancelled", color="default", auto_hide=True)
+        print("[VoxBridge] Recording cancelled.")
 
     def _show_overlay(self, text, color="default", auto_hide=False):
         """Show overlay if available (safe to call before UI init)."""
@@ -341,7 +434,8 @@ class VoxBridgeApp:
             AppHelper.callAfter(
                 lambda: self._show_overlay(stt_msg, color="default")
             )
-            text = self.stt.transcribe(audio, language=self.config["language"])
+            language = self.config.get("language")  # None = auto-detect
+            text = self.stt.transcribe(audio, language=language)
             print(f"[STT] Raw: {text}")
 
             if not text or not text.strip():
@@ -397,7 +491,8 @@ class VoxBridgeApp:
         print("[VoxBridge] Starting...")
         print(f"[VoxBridge] STT model: {self.config['stt']['model']}")
         print(f"[VoxBridge] LLM model: {self.config['formatter']['model']}")
-        print(f"[VoxBridge] Language: {self.config['language']}")
+        lang = self.config.get("language") or "auto-detect"
+        print(f"[VoxBridge] Language: {lang}")
         print("[VoxBridge] Ready. Hold the hotkey to record, release to process.")
 
         # Handle Ctrl+C gracefully

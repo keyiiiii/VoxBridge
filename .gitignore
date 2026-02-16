@@ -11,6 +11,10 @@ build/
 venv/
 env/
 .env
+.env.*
+*.pem
+*.key
+credentials*
 *.wav
 *.mp3
 *.tmp

@@ -1,6 +1,9 @@
 """Main VoxBridge application - orchestrates all components."""
 
+import hashlib
+import os
 import signal
+import subprocess
 import threading
 
 import numpy as np
@@ -60,6 +63,9 @@ class _AppDelegate(NSObject):
 
         # Start hotkey listener now that event loop is running
         app._setup_hotkey()
+
+        # Reset stale accessibility permission if app binary changed (e.g. update)
+        app._reset_accessibility_if_needed()
 
         # Check accessibility permission (required for text injection)
         trusted = AXIsProcessTrustedWithOptions(
@@ -133,6 +139,52 @@ class VoxBridgeApp:
         if self._formatter is None:
             self._formatter = Formatter(self.config["formatter"])
         return self._formatter
+
+    def _reset_accessibility_if_needed(self) -> None:
+        """Reset accessibility permission if the app binary has changed.
+
+        macOS ties accessibility permissions to the app's code signature.
+        With ad-hoc signing, each build gets a new signature, so stale
+        permissions from a previous version won't work. This detects
+        binary changes and resets the TCC entry so macOS prompts again.
+        """
+        _BUNDLE_ID = "com.voxbridge.app"
+        support_dir = os.path.join(
+            os.path.expanduser("~"), "Library", "Application Support", "VoxBridge"
+        )
+        sig_file = os.path.join(support_dir, "last_signature")
+
+        # Compute hash of the current executable
+        # __file__ = .app/Contents/Resources/voxbridge/app.py
+        # executable = .app/Contents/MacOS/VoxBridge
+        contents_dir = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        exe_path = os.path.join(contents_dir, "MacOS", "VoxBridge")
+        if not os.path.isfile(exe_path):
+            # Running as CLI (python -m voxbridge), not .app — skip
+            return
+
+        with open(exe_path, "rb") as f:
+            current_hash = hashlib.sha256(f.read()).hexdigest()
+
+        # Compare with stored hash
+        previous_hash = None
+        if os.path.isfile(sig_file):
+            with open(sig_file, "r") as f:
+                previous_hash = f.read().strip()
+
+        if previous_hash != current_hash:
+            if previous_hash is not None:
+                print("[VoxBridge] Binary changed — resetting accessibility permission")
+                subprocess.run(
+                    ["tccutil", "reset", "Accessibility", _BUNDLE_ID],
+                    capture_output=True,
+                )
+            # Store current hash
+            os.makedirs(support_dir, exist_ok=True)
+            with open(sig_file, "w") as f:
+                f.write(current_hash)
 
     def _start_preload(self) -> None:
         """Start STT model preload in a background thread with status overlay."""

@@ -71,11 +71,18 @@ class _AppDelegate(NSObject):
             print("[VoxBridge] Accessibility: NOT granted - text injection disabled")
             print("[VoxBridge] Please grant Accessibility permission in System Settings")
 
-        # Show startup notification
-        hotkey = app.config.get("hotkey", "alt_r")
-        app.overlay.show(
-            f"VoxBridge Ready ({hotkey})", color="success", auto_hide=True,
-        )
+        # Background preload if requested
+        if app._preload:
+            app._start_preload()
+        else:
+            hotkey = app.config.get("hotkey", "alt_r")
+            app.overlay.show(
+                f"VoxBridge Ready ({hotkey})", color="success", auto_hide=True,
+            )
+
+        # Background Ollama check
+        if app.config["formatter"]["enabled"]:
+            threading.Thread(target=app._check_ollama, daemon=True).start()
 
         print("[VoxBridge] UI initialized.")
 
@@ -83,8 +90,9 @@ class _AppDelegate(NSObject):
 class VoxBridgeApp:
     """Push-to-talk voice input application for macOS."""
 
-    def __init__(self, config_path: str | None = None):
+    def __init__(self, config_path: str | None = None, preload: bool = False):
         self.config = load_config(config_path)
+        self._preload = preload
 
         # NSApplication setup – Accessory policy (no Dock icon, menu bar only).
         self._nsapp = NSApplication.sharedApplication()
@@ -125,6 +133,52 @@ class VoxBridgeApp:
         if self._formatter is None:
             self._formatter = Formatter(self.config["formatter"])
         return self._formatter
+
+    def _start_preload(self) -> None:
+        """Start STT model preload in a background thread with status overlay."""
+        cached = self.stt.is_model_cached()
+        msg = "Loading STT model..." if cached else "Downloading STT model..."
+        self._show_overlay(msg, color="default")
+        print(f"[VoxBridge] {msg}")
+
+        def _do_preload():
+            try:
+                self.stt.preload()
+                hotkey = self.config.get("hotkey", "alt_r")
+                AppHelper.callAfter(
+                    lambda: self._show_overlay(
+                        f"VoxBridge Ready ({hotkey})",
+                        color="success",
+                        auto_hide=True,
+                    )
+                )
+                print("[VoxBridge] STT model preloaded.")
+            except Exception as e:
+                print(f"[VoxBridge] Preload error: {e}")
+                AppHelper.callAfter(
+                    lambda: self._show_overlay(
+                        f"Preload error: {str(e)[:40]}",
+                        color="error",
+                        auto_hide=True,
+                    )
+                )
+
+        threading.Thread(target=_do_preload, daemon=True).start()
+
+    def _check_ollama(self) -> None:
+        """Check Ollama availability in background; warn if unreachable."""
+        import time
+        # Delay to avoid conflicting with preload overlay messages
+        time.sleep(3)
+        if not self.formatter.is_available():
+            print("[VoxBridge] Ollama is not running - formatting will be disabled")
+            AppHelper.callAfter(
+                lambda: self._show_overlay(
+                    "Ollama not running (formatting disabled)",
+                    color="warning",
+                    auto_hide=True,
+                )
+            )
 
     def _setup_hotkey(self) -> None:
         """Configure the global push-to-talk hotkey using NSEvent monitors."""
@@ -188,8 +242,13 @@ class VoxBridgeApp:
         """Background: transcribe, format, inject."""
         try:
             # Step 1: STT
+            if self._stt is None:
+                cached = STT(self.config["stt"]).is_model_cached()
+                stt_msg = "Loading STT model..." if cached else "Downloading STT model..."
+            else:
+                stt_msg = "Transcribing..."
             AppHelper.callAfter(
-                lambda: self._show_overlay("Transcribing...", color="default")
+                lambda: self._show_overlay(stt_msg, color="default")
             )
             text = self.stt.transcribe(audio, language=self.config["language"])
             print(f"[STT] Raw: {text}")

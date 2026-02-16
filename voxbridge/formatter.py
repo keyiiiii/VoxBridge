@@ -10,6 +10,23 @@ class Formatter:
         self.model = config.get("model", "qwen2.5:7b")
         self.timeout = config.get("timeout", 30)
         self._prompt_template = self._load_prompt(config.get("prompt_file", ""))
+        self._client = None
+
+    def _get_client(self):
+        """Get or create an Ollama client with timeout."""
+        if self._client is None:
+            import ollama
+            self._client = ollama.Client(timeout=self.timeout)
+        return self._client
+
+    def is_available(self) -> bool:
+        """Check if Ollama server is reachable."""
+        try:
+            import httpx
+            r = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
+            return r.status_code == 200
+        except Exception:
+            return False
 
     def _load_prompt(self, path: str) -> str:
         """Load the formatting prompt template."""
@@ -33,11 +50,10 @@ class Formatter:
             return text
 
         try:
-            import ollama
-
             prompt = self._prompt_template.replace("{text}", text)
+            client = self._get_client()
 
-            response = ollama.chat(
+            response = client.chat(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 options={"temperature": 0.3, "num_predict": 1024},

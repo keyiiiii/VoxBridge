@@ -22,12 +22,7 @@ def main():
 
     from .app import VoxBridgeApp
 
-    app = VoxBridgeApp(config_path=args.config)
-
-    if args.preload:
-        print("[VoxBridge] Pre-loading STT model...")
-        app.stt.preload()
-
+    app = VoxBridgeApp(config_path=args.config, preload=args.preload)
     app.run()
 
 

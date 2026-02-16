@@ -1,5 +1,7 @@
 """Speech-to-Text using faster-whisper (local, offline)."""
 
+import os
+
 import numpy as np
 from faster_whisper import WhisperModel
 
@@ -24,6 +26,20 @@ class STT:
             )
             print("[STT] Model loaded.")
         return self._model
+
+    def is_model_cached(self) -> bool:
+        """Check if the Whisper model is already downloaded locally."""
+        cache_dir = os.path.join(
+            os.path.expanduser("~"), ".cache", "huggingface", "hub"
+        )
+        if not os.path.isdir(cache_dir):
+            return False
+        # faster-whisper models are stored under "models--Systran--faster-whisper-<model>"
+        expected_prefix = f"models--Systran--faster-whisper-{self.model_name}"
+        for entry in os.listdir(cache_dir):
+            if entry == expected_prefix:
+                return True
+        return False
 
     def preload(self) -> None:
         """Eagerly load the Whisper model (called with --preload)."""

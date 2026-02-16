@@ -138,18 +138,32 @@ class Overlay(NSObject):
         self.hide()
 
 
+# Display labels for hotkey options
+_HOTKEY_LABELS = {
+    "alt_r": "Right Option",
+    "alt_l": "Left Option",
+    "ctrl_r": "Right Control",
+    "ctrl_l": "Left Control",
+    "shift_r": "Right Shift",
+    "shift_l": "Left Shift",
+}
+
+
 class StatusBarItem(NSObject):
     """Menu bar status item for VoxBridge."""
 
     @classmethod
     @objc.python_method
-    def create(cls) -> "StatusBarItem":
+    def create(cls, current_hotkey: str = "alt_r",
+               on_hotkey_change=None) -> "StatusBarItem":
         obj = cls.alloc().init()
-        obj._setup()
+        obj._setup(current_hotkey, on_hotkey_change)
         return obj
 
     @objc.python_method
-    def _setup(self):
+    def _setup(self, current_hotkey: str, on_hotkey_change):
+        self._on_hotkey_change = on_hotkey_change
+        self._current_hotkey = current_hotkey
         self._status_bar = NSStatusBar.systemStatusBar()
         self._item = self._status_bar.statusItemWithLength_(
             NSVariableStatusItemLength
@@ -164,10 +178,32 @@ class StatusBarItem(NSObject):
         menu = NSMenu.alloc().init()
 
         title_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "VoxBridge v0.1.0", None, ""
+            "VoxBridge", None, ""
         )
         title_item.setEnabled_(False)
         menu.addItem_(title_item)
+
+        menu.addItem_(NSMenuItem.separatorItem())
+
+        # Hotkey submenu
+        hotkey_menu = NSMenu.alloc().init()
+        self._hotkey_items = {}
+        for key, label in _HOTKEY_LABELS.items():
+            item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                label, "hotkeySelected:", ""
+            )
+            item.setTarget_(self)
+            item.setRepresentedObject_(key)
+            if key == current_hotkey:
+                item.setState_(1)  # NSOnState
+            hotkey_menu.addItem_(item)
+            self._hotkey_items[key] = item
+
+        hotkey_parent = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Hotkey", None, ""
+        )
+        hotkey_parent.setSubmenu_(hotkey_menu)
+        menu.addItem_(hotkey_parent)
 
         menu.addItem_(NSMenuItem.separatorItem())
 
@@ -178,6 +214,18 @@ class StatusBarItem(NSObject):
 
         self._item.setMenu_(menu)
         print(f"[StatusBar] Menu bar item created with title='VB'")
+
+    def hotkeySelected_(self, sender):
+        """Menu callback when a hotkey option is selected."""
+        key = sender.representedObject()
+        if key == self._current_hotkey:
+            return
+        # Update checkmarks
+        for k, item in self._hotkey_items.items():
+            item.setState_(1 if k == key else 0)
+        self._current_hotkey = key
+        if self._on_hotkey_change:
+            self._on_hotkey_change(key)
 
     @objc.python_method
     def set_title(self, title: str) -> None:

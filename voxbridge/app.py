@@ -59,7 +59,11 @@ class _AppDelegate(NSObject):
         """Create UI components (called after event loop is fully running)."""
         app = self._voxbridge
         app.overlay = Overlay.create(app.config["overlay"])
-        app.status_bar = StatusBarItem.create()
+        hotkey = app._get_effective_hotkey()
+        app.status_bar = StatusBarItem.create(
+            current_hotkey=hotkey,
+            on_hotkey_change=app._on_hotkey_change,
+        )
 
         # Start hotkey listener now that event loop is running
         app._setup_hotkey()
@@ -81,7 +85,6 @@ class _AppDelegate(NSObject):
         if app._preload:
             app._start_preload()
         else:
-            hotkey = app.config.get("hotkey", "alt_r")
             app.overlay.show(
                 f"VoxBridge Ready ({hotkey})", color="success", auto_hide=True,
             )
@@ -196,10 +199,10 @@ class VoxBridgeApp:
         def _do_preload():
             try:
                 self.stt.preload()
-                hotkey = self.config.get("hotkey", "alt_r")
+                effective_hotkey = self._get_effective_hotkey()
                 AppHelper.callAfter(
                     lambda: self._show_overlay(
-                        f"VoxBridge Ready ({hotkey})",
+                        f"VoxBridge Ready ({effective_hotkey})",
                         color="success",
                         auto_hide=True,
                     )
@@ -223,18 +226,54 @@ class VoxBridgeApp:
         # Delay to avoid conflicting with preload overlay messages
         time.sleep(3)
         if not self.formatter.is_available():
-            print("[VoxBridge] Ollama is not running - formatting will be disabled")
+            print("[VoxBridge] Ollama is not running - will auto-enable when available")
             AppHelper.callAfter(
                 lambda: self._show_overlay(
-                    "Ollama not running (formatting disabled)",
+                    "Ollama not found (auto-enables later)",
                     color="warning",
                     auto_hide=True,
                 )
             )
 
+    _SUPPORT_DIR = os.path.join(
+        os.path.expanduser("~"), "Library", "Application Support", "VoxBridge"
+    )
+    _HOTKEY_FILE = os.path.join(_SUPPORT_DIR, "hotkey")
+
+    def _get_effective_hotkey(self) -> str:
+        """Return hotkey: user override > config.yaml > default."""
+        saved = self._load_user_hotkey()
+        if saved and saved in _MODIFIER_KEY_CODES:
+            return saved
+        return self.config.get("hotkey", "alt_r")
+
+    def _load_user_hotkey(self) -> str | None:
+        """Load user's hotkey preference from Application Support."""
+        try:
+            with open(self._HOTKEY_FILE, "r") as f:
+                return f.read().strip()
+        except FileNotFoundError:
+            return None
+
+    def _save_user_hotkey(self, key: str) -> None:
+        """Save user's hotkey preference to Application Support."""
+        os.makedirs(self._SUPPORT_DIR, exist_ok=True)
+        with open(self._HOTKEY_FILE, "w") as f:
+            f.write(key)
+
+    def _on_hotkey_change(self, key: str) -> None:
+        """Called when user selects a new hotkey from the menu."""
+        self._hotkey_code = _MODIFIER_KEY_CODES.get(key)
+        self._hotkey_flag = _MODIFIER_FLAGS.get(key, 0)
+        self._save_user_hotkey(key)
+        from .overlay import _HOTKEY_LABELS
+        label = _HOTKEY_LABELS.get(key, key)
+        self._show_overlay(f"Hotkey: {label}", color="success", auto_hide=True)
+        print(f"[VoxBridge] Hotkey changed to: {key}")
+
     def _setup_hotkey(self) -> None:
         """Configure the global push-to-talk hotkey using NSEvent monitors."""
-        hotkey_name = self.config.get("hotkey", "alt_r")
+        hotkey_name = self._get_effective_hotkey()
         self._hotkey_code = _MODIFIER_KEY_CODES.get(hotkey_name)
         self._hotkey_flag = _MODIFIER_FLAGS.get(hotkey_name, 0)
 

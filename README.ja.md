@@ -16,7 +16,7 @@ macOS 向け完全ローカル音声入力ツール。ホットキーを押し�
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) への音声入力 — 話すだけでプロンプトが自動入力される:
 
-<video src="docs/demo.mov" controls width="100%"></video>
+<video src="https://github.com/keyiiiii/VoxBridge/raw/main/docs/demo.mp4" controls width="100%"></video>
 
 ## Architecture
 

@@ -1,14 +1,16 @@
+**English** | [日本語](README.ja.md)
+
 # VoxBridge
 
-macOS 向け完全ローカル音声入力ツール。ホットキーを押しながら話すだけで、文字起こし・整形されたテキストがアクティブなアプリに自動入力される。**音声データはすべてローカルで処理され、ネットワークに送信されない。**
+A fully local voice input tool for macOS. Just hold a hotkey and speak — your words are transcribed, formatted, and typed into the active app. **All audio is processed locally and never sent over the network.**
 
-## 特徴
+## Features
 
-- **完全ローカル処理** — 音声認識 (Whisper)・テキスト整形 (Ollama) ともにオンデバイス
-- **自己完結型 .app** — Python.framework + 依存パッケージをすべて同梱。コピーするだけで動く
-- **Push-to-talk** — 修飾キー (Option/Ctrl/Shift) を押している間だけ録音
-- **どのアプリにも入力** — アクティブなアプリにクリップボード経由でペースト
-- **ターミナル対応** — Terminal / iTerm2 等では自動で Enter も送信
+- **Fully local processing** — Speech recognition (Whisper) and text formatting (Ollama) run entirely on-device
+- **Self-contained .app** — Bundles Python.framework and all dependencies. Just copy and run
+- **Push-to-talk** — Records only while a modifier key (Option/Ctrl/Shift) is held
+- **Works with any app** — Pastes text into the active app via clipboard
+- **Terminal-aware** — Automatically sends Enter in Terminal / iTerm2 etc.
 
 ## Architecture
 
@@ -26,7 +28,7 @@ macOS 向け完全ローカル音声入力ツール。ホットキーを押し�
 │  ┌──────────┐    ┌──────────┐    ┌────▼─────┐          │
 │  │ Overlay  │    │ Injector │<───│Formatter │          │
 │  │(NSPanel  │    │(Clipboard│    │(Ollama   │          │
-│  │ 状態表示) │    │ +Cmd+V + │    │ optional)│          │
+│  │ status)  │    │ +Cmd+V + │    │ optional)│          │
 │  └──────────┘    │ CGEvent) │    └──────────┘          │
 │                   └────┬─────┘                          │
 │                   ┌────▼────┐                           │
@@ -38,78 +40,78 @@ macOS 向け完全ローカル音声入力ツール。ホットキーを押し�
 
 ## Requirements
 
-- **macOS 14+** (Sonoma 以降、Apple Silicon)
-- **Ollama** (オプション) — テキスト整形を使う場合のみ
+- **macOS 14+** (Sonoma or later, Apple Silicon)
+- **Ollama** (optional) — only needed for text formatting
 
-### Ollama (オプション)
+### Ollama (Optional)
 
-[Ollama](https://ollama.com/) は音声認識結果のテキスト整形に使用するローカル LLM サーバー。**なくても動作する** (整形をスキップして STT の結果がそのまま入力される)。
+[Ollama](https://ollama.com/) is a local LLM server used to format transcribed text. **VoxBridge works without it** — formatting is skipped and raw STT output is used directly.
 
 ```bash
-# インストール
+# Install
 brew install ollama
 
-# サーバー起動
+# Start the server
 ollama serve
 
-# 整形用モデルをダウンロード (~4GB)
+# Download the formatting model (~4GB)
 ollama pull qwen2.5:7b
 ```
 
-Ollama がインストールされていない、またはサーバーが起動していない場合は、自動的に整形をスキップして音声認識の結果をそのまま入力する。`config.yaml` で `formatter.enabled: false` にすれば明示的に無効化もできる。
+If Ollama is not installed or the server is not running, formatting is automatically skipped. You can also explicitly disable it by setting `formatter.enabled: false` in `config.yaml`.
 
-## macOS 権限
+## macOS Permissions
 
-VoxBridge は以下の macOS 権限が必要。初回起動時にダイアログが表示される。
+VoxBridge requires the following macOS permissions. A dialog will appear on first launch.
 
-| 権限 | 必須 | 用途 | 未許可時の動作 |
-|------|------|------|---------------|
-| **マイク** | 必須 | 音声の録音 | 録音できない (アプリが動作しない) |
-| **アクセシビリティ** | 推奨 | グローバルホットキー監視 + テキスト注入 (Cmd+V, Enter) | テキストがクリップボードにコピーされるが自動ペーストされない。手動で Cmd+V が必要 |
+| Permission | Required | Purpose | Without permission |
+|------------|----------|---------|-------------------|
+| **Microphone** | Required | Audio recording | Cannot record (app won't function) |
+| **Accessibility** | Recommended | Global hotkey monitoring + text injection (Cmd+V, Enter) | Text is copied to clipboard but not auto-pasted. Manual Cmd+V required |
 
-設定場所: **システム設定 > プライバシーとセキュリティ**
+Settings location: **System Settings > Privacy & Security**
 
 ## Quick Start
 
-### GitHub Releases からインストール (推奨)
+### Install from GitHub Releases (Recommended)
 
-[Releases ページ](https://github.com/keyiiiii/VoxBridge/releases/latest) から `VoxBridge-*-arm64.zip` をダウンロード。
+Download `VoxBridge-*-arm64.zip` from the [Releases page](https://github.com/keyiiiii/VoxBridge/releases/latest).
 
 ```bash
-# 展開して /Applications に配置
+# Extract and place in /Applications
 unzip VoxBridge-*-arm64.zip -d /Applications
 
-# 起動
+# Launch
 open /Applications/VoxBridge.app
 ```
 
-> **Note**: Downloads フォルダから直接起動すると macOS の App Translocation により一時パスで実行され、アクセシビリティ権限が正しく機能しない。必ず `/Applications` やホームフォルダなど別の場所に移動してから起動すること。
+> **Note**: Launching directly from the Downloads folder triggers macOS App Translocation, which runs the app from a temporary path and prevents Accessibility permissions from working properly. Always move the app to `/Applications` or your home folder before launching.
 
-初回起動時に Gatekeeper の警告が出る場合は **システム設定 > プライバシーとセキュリティ > 「このまま開く」** で許可する。
+If Gatekeeper shows a warning on first launch, go to **System Settings > Privacy & Security > "Open Anyway"** to allow it.
 
-メニューバーに **VB** が表示されたら起動完了。
+When **VB** appears in the menu bar, the app is ready.
 
-### ソースからビルドして起動
+### Build from Source
 
 ```bash
 git clone https://github.com/keyiiiii/VoxBridge.git
 cd VoxBridge
 
-# .app をビルド (Python.framework + 依存パッケージを同梱、数分かかる)
+# Build .app (bundles Python.framework + dependencies, takes a few minutes)
 python3 scripts/build_app.py
 
-# 起動
+# Launch
 open dist/VoxBridge.app
 ```
 
-`--install` で `/Applications` に直接インストール:
+Install directly to `/Applications` with `--install`:
 
 ```bash
 python3 scripts/build_app.py --install
 open /Applications/VoxBridge.app
 ```
 
-### CLI として起動 (開発用)
+### Run as CLI (Development)
 
 ```bash
 python3 -m venv .venv
@@ -121,64 +123,64 @@ python -m voxbridge --preload
 
 ## Usage
 
-1. **Right Option キー** (デフォルト) を **押し続ける** → 録音開始 (オーバーレイに "Recording..." 表示)
-2. キーを **離す** → 録音停止 → 文字起こし → 整形 → アクティブなアプリにテキスト入力
-3. Terminal / iTerm2 等のターミナルアプリでは、自動で Enter も送信
+1. **Hold** the **Right Option key** (default) — recording starts ("Recording..." overlay)
+2. **Release** the key — recording stops → transcription → formatting → text is typed into the active app
+3. In terminal apps (Terminal / iTerm2 etc.), Enter is sent automatically
 
-終了: メニューバーの **VB** > **Quit VoxBridge**
+Quit: Menu bar **VB** > **Quit VoxBridge**
 
-ログ: `~/Library/Logs/VoxBridge.log`
+Logs: `~/Library/Logs/VoxBridge.log`
 
-## .app の構成
+## .app Structure
 
-ビルドされた `VoxBridge.app` は自己完結型 (~400MB)。他の Mac にコピーするだけで動作する。
+The built `VoxBridge.app` is self-contained (~400MB). Just copy it to another Mac and it works.
 
 ```
 VoxBridge.app/Contents/
-├── MacOS/VoxBridge              # Mach-O ランチャー (相対パスで解決)
-├── Frameworks/Python.framework/ # Python 本体
+├── MacOS/VoxBridge              # Mach-O launcher (resolves via relative paths)
+├── Frameworks/Python.framework/ # Python runtime
 ├── Resources/
-│   ├── voxbridge/               # Python ソースコード
-│   ├── config.yaml              # 設定ファイル
-│   ├── prompts/                 # LLM プロンプト
-│   └── venv/                    # Python 依存パッケージ
+│   ├── voxbridge/               # Python source code
+│   ├── config.yaml              # Configuration file
+│   ├── prompts/                 # LLM prompt templates
+│   └── venv/                    # Python dependencies
 └── Info.plist
 ```
 
-**同梱されるもの:**
-- Python.framework (Python ランタイム)
-- venv (faster-whisper, pyobjc, ollama 等の Python パッケージ)
-- VoxBridge ソースコード、設定ファイル
+**Bundled:**
+- Python.framework (Python runtime)
+- venv (faster-whisper, pyobjc, ollama, and other Python packages)
+- VoxBridge source code and config files
 
-**同梱されないもの (各 Mac で別途必要):**
-- **Whisper モデル** — 初回起動時に `~/.cache/huggingface/` に自動ダウンロード (~500MB)
-- **Ollama + LLM モデル** — テキスト整形を使う場合のみ (なくても動作する)
+**Not bundled (downloaded per machine):**
+- **Whisper model** — Auto-downloaded on first launch to `~/.cache/huggingface/` (~500MB)
+- **Ollama + LLM model** — Only needed for text formatting (works without it)
 
 ## Configuration
 
-`config.yaml` を編集して設定を変更できる (.app の場合は `VoxBridge.app/Contents/Resources/config.yaml`)。
+Edit `config.yaml` to change settings (for .app: `VoxBridge.app/Contents/Resources/config.yaml`).
 
 ```yaml
-# ホットキー (修飾キー名)
-hotkey: "alt_r"       # Right Option (デフォルト)
+# Hotkey (modifier key name)
+hotkey: "alt_r"       # Right Option (default)
 # hotkey: "alt_l"     # Left Option
 # hotkey: "ctrl_r"    # Right Control
 # hotkey: "shift_r"   # Right Shift
 
-# 音声認識の言語
+# Speech recognition language
 language: "ja"
 
-# STT モデル (大きいほど精度↑、速度↓)
+# STT model (larger = more accurate but slower)
 stt:
   model: "small"       # tiny / base / small / medium / large-v3
   compute_type: "int8" # int8 / float16 / float32
 
-# テキスト整形 (Ollama)
+# Text formatting (Ollama)
 formatter:
-  enabled: true        # false で整形をスキップ
-  model: "qwen2.5:7b"  # Ollama モデル名
+  enabled: true        # Set to false to skip formatting
+  model: "qwen2.5:7b"  # Ollama model name
 
-# Enter を送るアプリ
+# Apps that receive Enter after text injection
 injector:
   send_enter_for:
     - "Terminal"
@@ -190,47 +192,47 @@ injector:
 
 ## Troubleshooting
 
-### ホットキーが反応しない
+### Hotkey not responding
 
-- **アクセシビリティ** 権限を確認 (システム設定 > プライバシーとセキュリティ > アクセシビリティ)
-- VoxBridge.app を追加して再起動
+- Check **Accessibility** permission (System Settings > Privacy & Security > Accessibility)
+- Add VoxBridge.app and restart
 
-### 録音できない
+### Cannot record
 
-- **マイク** 権限を確認 (システム設定 > プライバシーとセキュリティ > マイク)
-- マイクデバイスの確認: `python3 -c "import sounddevice; print(sounddevice.query_devices())"`
+- Check **Microphone** permission (System Settings > Privacy & Security > Microphone)
+- Verify mic device: `python3 -c "import sounddevice; print(sounddevice.query_devices())"`
 
-### テキストが自動入力されない
+### Text not auto-typed
 
-- **アクセシビリティ** 権限を確認
-- 権限がない場合、テキストはクリップボードにコピーされるので手動で Cmd+V でペースト可能
-- オーバーレイに "Copied (要 Accessibility 許可)" と表示される場合は権限が未付与
-- Downloads フォルダから直接起動していないか確認 (App Translocation により権限が機能しない)
+- Check **Accessibility** permission
+- Without permission, text is copied to clipboard — paste manually with Cmd+V
+- If the overlay shows "Copied (requires Accessibility)", permission has not been granted
+- Make sure you're not launching from the Downloads folder (App Translocation prevents permissions from working)
 
-### Ollama 関連
+### Ollama issues
 
 ```bash
-# Ollama が起動しているか確認
+# Check if Ollama is running
 curl -s http://localhost:11434/api/tags | python3 -m json.tool
 
-# モデルがダウンロード済みか確認
+# Check if the model is downloaded
 ollama list
 
-# モデルを再ダウンロード
+# Re-download the model
 ollama pull qwen2.5:7b
 ```
 
-Ollama が利用できない場合は自動的に整形をスキップするため、エラーにはならない。
+If Ollama is unavailable, formatting is automatically skipped — no errors occur.
 
-### 入力が遅い
+### Slow input
 
-- STT モデルを `"tiny"` に変更 (精度は下がる)
-- `formatter.enabled` を `false` に (整形をスキップ)
-- .app の場合は `--preload` が自動で有効 (初回のモデルロード時間を排除)
+- Change STT model to `"tiny"` (lower accuracy)
+- Set `formatter.enabled` to `false` (skip formatting)
+- The .app build has `--preload` enabled by default (eliminates first-use model load time)
 
-### Whisper モデルのダウンロード
+### Whisper model download
 
-初回起動時に自動ダウンロードされる。手動で事前ダウンロードする場合:
+Auto-downloaded on first launch. To pre-download manually:
 
 ```bash
 python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
@@ -238,7 +240,7 @@ python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', devic
 
 ## Release
 
-`v*` タグを push すると GitHub Actions が自動でビルド・リリースを作成する。
+Pushing a `v*` tag triggers GitHub Actions to automatically build and create a release.
 
 ```bash
 git tag v0.3.0
@@ -249,31 +251,32 @@ git push origin v0.3.0
 
 ```
 VoxBridge/
-├── README.md
+├── README.md                   # English documentation
+├── README.ja.md                # Japanese documentation
 ├── requirements.txt
-├── config.yaml                 # 設定ファイル
+├── config.yaml                 # Configuration file
 ├── prompts/
-│   └── format.txt              # 整形プロンプトテンプレート
+│   └── format.txt              # Formatting prompt template
 ├── resources/
-│   └── icon.icns               # アプリアイコン (プリビルト)
+│   └── icon.icns               # App icon (prebuilt)
 ├── scripts/
-│   ├── build_app.py            # .app ビルドスクリプト
-│   └── launch.sh               # CLI 起動ヘルパー
+│   ├── build_app.py            # .app build script
+│   └── launch.sh               # CLI launch helper
 ├── .github/
 │   └── workflows/
-│       └── release.yml         # リリース自動化 (タグ push → ビルド → GitHub Releases)
+│       └── release.yml         # Release automation (tag push → build → GitHub Releases)
 ├── voxbridge/
 │   ├── __init__.py
-│   ├── __main__.py             # エントリーポイント
-│   ├── app.py                  # メインアプリ (NSEvent + AppDelegate)
-│   ├── config.py               # 設定読み込み
-│   ├── recorder.py             # 音声録音 (sounddevice)
-│   ├── stt.py                  # 音声認識 (faster-whisper)
-│   ├── formatter.py            # テキスト整形 (Ollama, オプション)
-│   ├── injector.py             # テキスト注入 (CGEvent + Clipboard)
-│   └── overlay.py              # オーバーレイ UI + メニューバー (PyObjC)
+│   ├── __main__.py             # Entry point
+│   ├── app.py                  # Main app (NSEvent + AppDelegate)
+│   ├── config.py               # Config loader
+│   ├── recorder.py             # Audio recording (sounddevice)
+│   ├── stt.py                  # Speech-to-text (faster-whisper)
+│   ├── formatter.py            # Text formatting (Ollama, optional)
+│   ├── injector.py             # Text injection (CGEvent + Clipboard)
+│   └── overlay.py              # Overlay UI + menu bar (PyObjC)
 └── tests/
-    └── test_smoke.py           # スモークテスト
+    └── test_smoke.py           # Smoke tests
 ```
 
 ## License

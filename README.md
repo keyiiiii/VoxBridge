@@ -16,7 +16,7 @@ A fully local voice input tool for macOS. Just hold a hotkey and speak — your 
 
 Voice input to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — just speak and your prompt is typed automatically:
 
-<video src="https://github.com/keyiiiii/VoxBridge/raw/main/docs/demo.mp4" controls width="100%"></video>
+![Demo](docs/demo.gif)
 
 ## Architecture
 

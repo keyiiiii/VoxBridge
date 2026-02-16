@@ -12,6 +12,12 @@ macOS 向け完全ローカル音声入力ツール。ホットキーを押し�
 - **どのアプリにも入力** — アクティブなアプリにクリップボード経由でペースト
 - **ターミナル対応** — Terminal / iTerm2 等では自動で Enter も送信
 
+## Demo
+
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) への音声入力 — 話すだけでプロンプトが自動入力される:
+
+<video src="docs/demo.mov" controls width="100%"></video>
+
 ## Architecture
 
 ```

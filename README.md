@@ -12,6 +12,14 @@ A fully local voice input tool for macOS. Just hold a hotkey and speak — your 
 - **Works with any app** — Pastes text into the active app via clipboard
 - **Terminal-aware** — Automatically sends Enter in Terminal / iTerm2 etc.
 
+## Demo
+
+Voice input to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — just speak and your prompt is typed automatically:
+
+https://github.com/user-attachments/assets/demo.mov
+
+<video src="docs/demo.mov" controls width="100%"></video>
+
 ## Architecture
 
 ```

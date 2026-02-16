@@ -49,18 +49,24 @@ macOS 向け完全ローカル音声入力ツール。ホットキーを押し�
 - **macOS 14+** (Sonoma 以降、Apple Silicon)
 - **Ollama** (オプション) — テキスト整形を使う場合のみ
 
-### Ollama (オプション)
+### Ollama + Qwen (オプション)
 
-[Ollama](https://ollama.com/) は音声認識結果のテキスト整形に使用するローカル LLM サーバー。**なくても動作する** (整形をスキップして STT の結果がそのまま入力される)。
+[Ollama](https://ollama.com/) はローカル LLM サーバーで、[Qwen 2.5](https://qwen2.5.ai/) はその上で動く AI 言語モデル。VoxBridge は Qwen を使って音声認識結果を整形する（「えーと」「あのー」などのフィラー除去、句読点の追加）。**なくても動作する**（整形をスキップして STT の結果がそのまま入力される）。
+
+**かんたんセットアップ（アプリをダウンロード）:**
+
+1. [ollama.com/download](https://ollama.com/download) から Ollama をダウンロードしてインストール
+2. Ollama アプリを起動（メニューバーに常駐する）
+3. ターミナルを開いて以下を実行:
+   ```bash
+   ollama pull qwen2.5:7b
+   ```
+
+**Homebrew（開発者向け）:**
 
 ```bash
-# インストール
 brew install ollama
-
-# サーバー起動
 ollama serve
-
-# 整形用モデルをダウンロード (~4GB)
 ollama pull qwen2.5:7b
 ```
 

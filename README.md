@@ -49,18 +49,24 @@ Voice input to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) —
 - **macOS 14+** (Sonoma or later, Apple Silicon)
 - **Ollama** (optional) — only needed for text formatting
 
-### Ollama (Optional)
+### Ollama + Qwen (Optional)
 
-[Ollama](https://ollama.com/) is a local LLM server used to format transcribed text. **VoxBridge works without it** — formatting is skipped and raw STT output is used directly.
+[Ollama](https://ollama.com/) is a local LLM server, and [Qwen 2.5](https://qwen2.5.ai/) is an AI language model that runs on it. VoxBridge uses Qwen to clean up transcribed text — removing filler words ("um", "uh") and adding proper punctuation. **VoxBridge works without it** — formatting is skipped and raw STT output is used directly.
+
+**Easy setup (download the app):**
+
+1. Download and install Ollama from [ollama.com/download](https://ollama.com/download)
+2. Launch the Ollama app (it runs in the menu bar)
+3. Open Terminal and run:
+   ```bash
+   ollama pull qwen2.5:7b
+   ```
+
+**Homebrew (for developers):**
 
 ```bash
-# Install
 brew install ollama
-
-# Start the server
 ollama serve
-
-# Download the formatting model (~4GB)
 ollama pull qwen2.5:7b
 ```
 

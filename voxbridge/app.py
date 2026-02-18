@@ -5,6 +5,8 @@ import os
 import signal
 import subprocess
 import threading
+import time
+import webbrowser
 
 import numpy as np
 from AppKit import NSApplication, NSApplicationActivationPolicyAccessory, NSEvent, NSBundle
@@ -63,15 +65,23 @@ class _AppDelegate(NSObject):
         """Create UI components (called after event loop is fully running)."""
         app = self._voxbridge
         app.overlay = Overlay.create(app.config["overlay"])
+        # Ensure user prompt file exists (copy bundled template on first launch)
+        app.formatter.ensure_user_prompt(app._USER_PROMPT_FILE)
         hotkey = app._get_effective_hotkey()
         model = app._get_effective_model()
+        format_level = app._get_effective_format_level()
         app.status_bar = StatusBarItem.create(
             current_hotkey=hotkey,
             current_model=model,
+            current_format_level=format_level,
             launch_at_login=app._is_launch_at_login(),
             on_hotkey_change=app._on_hotkey_change,
             on_model_change=app._on_model_change,
+            on_format_level_change=app._on_format_level_change,
             on_launch_at_login_change=app._set_launch_at_login,
+            on_install_ollama=app._on_install_ollama,
+            on_download_model=app._on_download_model,
+            on_edit_prompt=app._on_edit_prompt,
         )
 
         # Start hotkey listener now that event loop is running
@@ -98,9 +108,8 @@ class _AppDelegate(NSObject):
                 f"VoxBridge Ready ({hotkey})", color="success", auto_hide=True,
             )
 
-        # Background Ollama check
-        if app.config["formatter"]["enabled"]:
-            threading.Thread(target=app._check_ollama, daemon=True).start()
+        # Background Ollama check (always run to update menu items)
+        threading.Thread(target=app._check_ollama, daemon=True).start()
 
         print("[VoxBridge] UI initialized.")
 
@@ -232,69 +241,152 @@ class VoxBridgeApp:
         threading.Thread(target=_do_preload, daemon=True).start()
 
     def _check_ollama(self) -> None:
-        """Check Ollama availability in background; warn if unreachable."""
-        import time
+        """Check Ollama and model availability; update menu items."""
         # Delay to avoid conflicting with preload overlay messages
         time.sleep(3)
-        if not self.formatter.is_available():
-            print("[VoxBridge] Ollama is not running - will auto-enable when available")
+        tags = self.formatter._fetch_tags()
+        ollama_ok = tags is not None
+        model_ok = ollama_ok and any(
+            m.get("name", "") == self.formatter.model
+            or m.get("name", "").startswith(self.formatter.model + "-")
+            for m in tags
+        )
+
+        if self.status_bar:
+            AppHelper.callAfter(
+                lambda: self.status_bar.set_ollama_available(ollama_ok)
+            )
+            AppHelper.callAfter(
+                lambda: self.status_bar.set_model_available(model_ok)
+            )
+
+        if not ollama_ok:
+            print("[VoxBridge] Ollama is not running")
             AppHelper.callAfter(
                 lambda: self._show_overlay(
-                    "Ollama not found (auto-enables later)",
+                    "Ollama not found",
                     color="warning",
                     auto_hide=True,
                 )
             )
+        elif not model_ok:
+            model = self.formatter.model
+            print(f"[VoxBridge] Ollama running but model '{model}' not found")
+            AppHelper.callAfter(
+                lambda: self._show_overlay(
+                    f"Model not found: {model}",
+                    color="warning",
+                    auto_hide=True,
+                )
+            )
+        else:
+            print("[VoxBridge] Ollama and model ready")
 
     _SUPPORT_DIR = os.path.join(
         os.path.expanduser("~"), "Library", "Application Support", "VoxBridge"
     )
     _HOTKEY_FILE = os.path.join(_SUPPORT_DIR, "hotkey")
+    _MODEL_FILE = os.path.join(_SUPPORT_DIR, "stt_model")
+    _FORMAT_LEVEL_FILE = os.path.join(_SUPPORT_DIR, "formatter_level")
+    _USER_PROMPT_FILE = os.path.join(_SUPPORT_DIR, "format_prompt.txt")
+    _LAUNCH_AT_LOGIN_FILE = os.path.join(_SUPPORT_DIR, "launch_at_login")
+
+    def _read_pref(self, path: str) -> str | None:
+        """Read a single-value preference file. Returns None if missing."""
+        try:
+            with open(path, "r") as f:
+                return f.read().strip() or None
+        except FileNotFoundError:
+            return None
+
+    def _write_pref(self, path: str, value: str) -> None:
+        """Write a single-value preference file."""
+        os.makedirs(self._SUPPORT_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            f.write(value)
 
     def _get_effective_hotkey(self) -> str:
         """Return hotkey: user override > config.yaml > default."""
-        saved = self._load_user_hotkey()
+        saved = self._read_pref(self._HOTKEY_FILE)
         if saved and saved in _MODIFIER_KEY_CODES:
             return saved
         return self.config.get("hotkey", "alt_r")
 
-    def _load_user_hotkey(self) -> str | None:
-        """Load user's hotkey preference from Application Support."""
-        try:
-            with open(self._HOTKEY_FILE, "r") as f:
-                return f.read().strip()
-        except FileNotFoundError:
-            return None
-
-    def _save_user_hotkey(self, key: str) -> None:
-        """Save user's hotkey preference to Application Support."""
-        os.makedirs(self._SUPPORT_DIR, exist_ok=True)
-        with open(self._HOTKEY_FILE, "w") as f:
-            f.write(key)
-
-    _MODEL_FILE = os.path.join(_SUPPORT_DIR, "stt_model")
-    _LAUNCH_AT_LOGIN_FILE = os.path.join(_SUPPORT_DIR, "launch_at_login")
-
     def _get_effective_model(self) -> str:
         """Return STT model: user override > config.yaml > default."""
-        try:
-            with open(self._MODEL_FILE, "r") as f:
-                saved = f.read().strip()
-                if saved:
-                    return saved
-        except FileNotFoundError:
-            pass
-        return self.config["stt"].get("model", "small")
+        return self._read_pref(self._MODEL_FILE) or self.config["stt"].get("model", "small")
 
     def _on_model_change(self, model_name: str) -> None:
         """Called when user selects a new STT model from the menu."""
-        os.makedirs(self._SUPPORT_DIR, exist_ok=True)
-        with open(self._MODEL_FILE, "w") as f:
-            f.write(model_name)
-        # Reset loaded model so next transcription uses the new one
-        self._stt = None
+        self._write_pref(self._MODEL_FILE, model_name)
+        self._stt = None  # Reset so next transcription uses the new model
         self._show_overlay(f"STT Model: {model_name}", color="success", auto_hide=True)
         print(f"[VoxBridge] STT model changed to: {model_name}")
+
+    def _get_effective_format_level(self) -> str:
+        """Return format level: saved file > config enabled flag > default 'on'."""
+        saved = self._read_pref(self._FORMAT_LEVEL_FILE)
+        if saved in ("off", "on"):
+            return saved
+        if not self.config["formatter"].get("enabled", True):
+            return "off"
+        return "on"
+
+    def _on_format_level_change(self, level: str) -> None:
+        """Called when user selects a new formatting level from the menu."""
+        self._write_pref(self._FORMAT_LEVEL_FILE, level)
+        label = "On" if level == "on" else "Off"
+        self._show_overlay(
+            f"Formatting: {label}", color="success", auto_hide=True
+        )
+        print(f"[VoxBridge] Format level changed to: {level}")
+
+    def _on_install_ollama(self) -> None:
+        """Open the Ollama download page in the default browser."""
+        webbrowser.open("https://ollama.com/download")
+
+    def _on_download_model(self) -> None:
+        """Download the configured Ollama model in the background."""
+        if self.status_bar:
+            AppHelper.callAfter(
+                lambda: self.status_bar.set_download_in_progress(True)
+            )
+        self._show_overlay("Downloading model...", color="default")
+
+        def on_progress(line):
+            AppHelper.callAfter(
+                lambda l=line: self._show_overlay(l[:40], color="default")
+            )
+
+        def on_complete():
+            AppHelper.callAfter(lambda: self._show_overlay(
+                "Model downloaded", color="success", auto_hide=True
+            ))
+            if self.status_bar:
+                AppHelper.callAfter(lambda: self.status_bar.set_download_in_progress(False))
+                AppHelper.callAfter(lambda: self.status_bar.set_model_available(True))
+            print("[VoxBridge] Model download complete.")
+
+        def on_error(err):
+            AppHelper.callAfter(lambda: self._show_overlay(
+                f"Download error: {err[:40]}", color="error", auto_hide=True
+            ))
+            if self.status_bar:
+                AppHelper.callAfter(lambda: self.status_bar.set_download_in_progress(False))
+            print(f"[VoxBridge] Model download error: {err}")
+
+        self.formatter.pull_model(
+            on_progress=on_progress,
+            on_complete=on_complete,
+            on_error=on_error,
+        )
+
+    def _on_edit_prompt(self) -> None:
+        """Open user's prompt file in the default text editor."""
+        path = self._USER_PROMPT_FILE
+        # ensure_user_prompt already called at startup, but just in case
+        self.formatter.ensure_user_prompt(path)
+        subprocess.Popen(["open", "-t", path])
 
     def _is_launch_at_login(self) -> bool:
         """Check if launch-at-login is enabled."""
@@ -334,7 +426,7 @@ class VoxBridgeApp:
         """Called when user selects a new hotkey from the menu."""
         self._hotkey_code = _MODIFIER_KEY_CODES.get(key)
         self._hotkey_flag = _MODIFIER_FLAGS.get(key, 0)
-        self._save_user_hotkey(key)
+        self._write_pref(self._HOTKEY_FILE, key)
         from .overlay import _HOTKEY_LABELS
         label = _HOTKEY_LABELS.get(key, key)
         self._show_overlay(f"Hotkey: {label}", color="success", auto_hide=True)
@@ -447,7 +539,7 @@ class VoxBridgeApp:
                 return
 
             # Step 2: Format (optional)
-            if self.config["formatter"]["enabled"]:
+            if self._get_effective_format_level() == "on":
                 AppHelper.callAfter(
                     lambda: self._show_overlay("Formatting...", color="default")
                 )

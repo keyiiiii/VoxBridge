@@ -9,6 +9,9 @@ A fully local voice input tool for macOS. Just hold a hotkey and speak — your 
 - **Fully local processing** — Speech recognition (Whisper) and text formatting (Ollama) run entirely on-device
 - **Self-contained .app** — Bundles Python.framework and all dependencies. Just copy and run
 - **Push-to-talk** — Records only while a modifier key (Option/Ctrl/Shift) is held
+- **Menu bar controls** — Switch hotkey, STT model, and formatting on/off from the menu bar
+- **Editable prompt** — Customize the formatting prompt to your liking; changes take effect immediately
+- **Guided Ollama setup** — Install Ollama and download the model directly from the menu
 - **Works with any app** — Pastes text into the active app via clipboard
 - **Terminal-aware** — Automatically sends Enter in Terminal / iTerm2 etc.
 
@@ -53,7 +56,11 @@ Voice input to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) —
 
 [Ollama](https://ollama.com/) is a local LLM server, and [Qwen 2.5](https://qwen2.5.ai/) is an AI language model that runs on it. VoxBridge uses Qwen to clean up transcribed text — removing filler words ("um", "uh") and adding proper punctuation. **VoxBridge works without it** — formatting is skipped and raw STT output is used directly.
 
-**Easy setup (download the app):**
+**From the menu bar (easiest):**
+
+If Ollama is not detected, menu bar **VB** shows **Install Ollama...** — click to open the download page. After installing, if the model is not yet downloaded, **Download Qwen model...** appears — click to download it in the background with progress shown in the overlay.
+
+**Manual setup:**
 
 1. Download and install Ollama from [ollama.com/download](https://ollama.com/download)
 2. Launch the Ollama app (it runs in the menu bar)
@@ -70,7 +77,7 @@ ollama serve
 ollama pull qwen2.5:7b
 ```
 
-If Ollama is not installed or the server is not running, formatting is automatically skipped. You can also explicitly disable it by setting `formatter.enabled: false` in `config.yaml`.
+If Ollama is not installed or the server is not running, formatting is automatically disabled. You can toggle it from the menu bar (**VB** > **Formatting** > **Off / On**).
 
 ## macOS Permissions
 
@@ -139,7 +146,30 @@ python -m voxbridge --preload
 2. **Release** the key — recording stops → transcription → formatting → text is typed into the active app
 3. In terminal apps (Terminal / iTerm2 etc.), Enter is sent automatically
 
-Quit: Menu bar **VB** > **Quit VoxBridge**
+### Menu Bar
+
+Click **VB** in the menu bar to access settings:
+
+```
+VoxBridge
+─────────
+Hotkey          ▶ Right Option / Left Option / ...
+Speech Model    ▶ tiny / base / small / ...
+Formatting      ▶ Off / On
+─────────
+Edit Formatting Prompt...
+Install Ollama...          (shown when Ollama is not detected)
+Download Qwen model...     (shown when model is not downloaded)
+─────────
+Launch at Login
+─────────
+Quit
+```
+
+- **Formatting** — Toggle text formatting on/off. Greyed out when Ollama or the model is unavailable.
+- **Edit Formatting Prompt...** — Opens the prompt file (`~/Library/Application Support/VoxBridge/format_prompt.txt`) in your text editor. Changes take effect on the next voice input — no restart needed. The file is created from the bundled template on first launch and is never overwritten by updates.
+
+Quit: Menu bar **VB** > **Quit**
 
 Logs: `~/Library/Logs/VoxBridge.log`
 
@@ -170,7 +200,7 @@ VoxBridge.app/Contents/
 
 ## Configuration
 
-Edit `config.yaml` to change settings (for .app: `VoxBridge.app/Contents/Resources/config.yaml`).
+Most settings can be changed from the menu bar. For advanced options, edit `config.yaml` (for .app: `VoxBridge.app/Contents/Resources/config.yaml`).
 
 ```yaml
 # Hotkey (modifier key name)
@@ -238,8 +268,8 @@ If Ollama is unavailable, formatting is automatically skipped — no errors occu
 
 ### Slow input
 
-- Change STT model to `"tiny"` (lower accuracy)
-- Set `formatter.enabled` to `false` (skip formatting)
+- Change STT model to `"tiny"` from the menu bar (lower accuracy)
+- Turn off formatting from **VB** > **Formatting** > **Off**
 - The .app build has `--preload` enabled by default (eliminates first-use model load time)
 
 ### Whisper model download

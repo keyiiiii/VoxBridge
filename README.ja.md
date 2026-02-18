@@ -9,6 +9,9 @@ macOS 向け完全ローカル音声入力ツール。ホットキーを押し�
 - **完全ローカル処理** — 音声認識 (Whisper)・テキスト整形 (Ollama) ともにオンデバイス
 - **自己完結型 .app** — Python.framework + 依存パッケージをすべて同梱。コピーするだけで動く
 - **Push-to-talk** — 修飾キー (Option/Ctrl/Shift) を押している間だけ録音
+- **メニューバーから設定変更** — ホットキー、STT モデル、整形の On/Off をメニューから切り替え
+- **プロンプト編集** — 整形プロンプトを自由にカスタマイズ。変更は即座に反映
+- **Ollama ガイド付きセットアップ** — メニューから Ollama のインストールやモデルのダウンロードが可能
 - **どのアプリにも入力** — アクティブなアプリにクリップボード経由でペースト
 - **ターミナル対応** — Terminal / iTerm2 等では自動で Enter も送信
 
@@ -53,7 +56,11 @@ macOS 向け完全ローカル音声入力ツール。ホットキーを押し�
 
 [Ollama](https://ollama.com/) はローカル LLM サーバーで、[Qwen 2.5](https://qwen2.5.ai/) はその上で動く AI 言語モデル。VoxBridge は Qwen を使って音声認識結果を整形する（「えーと」「あのー」などのフィラー除去、句読点の追加）。**なくても動作する**（整形をスキップして STT の結果がそのまま入力される）。
 
-**かんたんセットアップ（アプリをダウンロード）:**
+**メニューバーからセットアップ（最も簡単）:**
+
+Ollama が検出されない場合、メニューバーの **VB** に **Install Ollama...** が表示される。クリックするとダウンロードページが開く。インストール後、モデルが未ダウンロードの場合は **Download Qwen model...** が表示され、クリックするとバックグラウンドでダウンロードが開始される（進捗はオーバーレイに表示）。
+
+**手動セットアップ:**
 
 1. [ollama.com/download](https://ollama.com/download) から Ollama をダウンロードしてインストール
 2. Ollama アプリを起動（メニューバーに常駐する）
@@ -70,7 +77,7 @@ ollama serve
 ollama pull qwen2.5:7b
 ```
 
-Ollama がインストールされていない、またはサーバーが起動していない場合は、自動的に整形をスキップして音声認識の結果をそのまま入力する。`config.yaml` で `formatter.enabled: false` にすれば明示的に無効化もできる。
+Ollama がインストールされていない、またはサーバーが起動していない場合は、自動的に整形が無効化される。メニューバーの **VB** > **Formatting** > **Off / On** で切り替え可能。
 
 ## macOS 権限
 
@@ -139,7 +146,30 @@ python -m voxbridge --preload
 2. キーを **離す** → 録音停止 → 文字起こし → 整形 → アクティブなアプリにテキスト入力
 3. Terminal / iTerm2 等のターミナルアプリでは、自動で Enter も送信
 
-終了: メニューバーの **VB** > **Quit VoxBridge**
+### メニューバー
+
+メニューバーの **VB** をクリックして設定にアクセス:
+
+```
+VoxBridge
+─────────
+Hotkey          ▶ Right Option / Left Option / ...
+Speech Model    ▶ tiny / base / small / ...
+Formatting      ▶ Off / On
+─────────
+Edit Formatting Prompt...
+Install Ollama...          (Ollama 未検出時のみ表示)
+Download Qwen model...     (モデル未DL時のみ表示)
+─────────
+Launch at Login
+─────────
+Quit
+```
+
+- **Formatting** — テキスト整形の On/Off を切り替え。Ollama やモデルが利用できない場合はグレーアウト。
+- **Edit Formatting Prompt...** — プロンプトファイル (`~/Library/Application Support/VoxBridge/format_prompt.txt`) をテキストエディタで開く。変更は次の音声入力から即反映（再起動不要）。このファイルは初回起動時にテンプレートからコピーされ、アップデートで上書きされない。
+
+終了: メニューバーの **VB** > **Quit**
 
 ログ: `~/Library/Logs/VoxBridge.log`
 
@@ -170,7 +200,7 @@ VoxBridge.app/Contents/
 
 ## Configuration
 
-`config.yaml` を編集して設定を変更できる (.app の場合は `VoxBridge.app/Contents/Resources/config.yaml`)。
+ほとんどの設定はメニューバーから変更可能。詳細設定は `config.yaml` を編集する (.app の場合は `VoxBridge.app/Contents/Resources/config.yaml`)。
 
 ```yaml
 # ホットキー (修飾キー名)
@@ -238,8 +268,8 @@ Ollama が利用できない場合は自動的に整形をスキップするた�
 
 ### 入力が遅い
 
-- STT モデルを `"tiny"` に変更 (精度は下がる)
-- `formatter.enabled` を `false` に (整形をスキップ)
+- メニューバーから STT モデルを `"tiny"` に変更 (精度は下がる)
+- **VB** > **Formatting** > **Off** で整形をオフにする
 - .app の場合は `--preload` が自動で有効 (初回のモデルロード時間を排除)
 
 ### Whisper モデルのダウンロード

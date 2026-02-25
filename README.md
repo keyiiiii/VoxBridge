@@ -92,7 +92,20 @@ Settings location: **System Settings > Privacy & Security**
 
 ## Quick Start
 
-### Install from GitHub Releases (Recommended)
+### Install with Homebrew
+
+```bash
+brew tap keyiiiii/tap
+brew install --cask voxbridge
+```
+
+To update:
+
+```bash
+brew upgrade --cask voxbridge
+```
+
+### Install from GitHub Releases
 
 Download `VoxBridge-*-arm64.zip` from the [Releases page](https://github.com/keyiiiii/VoxBridge/releases/latest).
 

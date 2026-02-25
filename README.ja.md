@@ -92,7 +92,20 @@ VoxBridge は以下の macOS 権限が必要。初回起動時にダイアログ
 
 ## Quick Start
 
-### GitHub Releases からインストール (推奨)
+### Homebrew でインストール
+
+```bash
+brew tap keyiiiii/tap
+brew install --cask voxbridge
+```
+
+アップデート:
+
+```bash
+brew upgrade --cask voxbridge
+```
+
+### GitHub Releases からインストール
 
 [Releases ページ](https://github.com/keyiiiii/VoxBridge/releases/latest) から `VoxBridge-*-arm64.zip` をダウンロード。
 

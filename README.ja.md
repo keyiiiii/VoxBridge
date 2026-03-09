@@ -2,6 +2,10 @@
 
 # VoxBridge
 
+[![Test](https://github.com/keyiiiii/VoxBridge/actions/workflows/test.yml/badge.svg)](https://github.com/keyiiiii/VoxBridge/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Homebrew](https://img.shields.io/badge/Homebrew-tap-orange.svg)](https://github.com/keyiiiii/homebrew-tap)
+
 macOS 向け完全ローカル音声入力ツール。ホットキーを押しながら話すだけで、文字起こし・整形されたテキストがアクティブなアプリに自動入力される。**音声データはすべてローカルで処理され、ネットワークに送信されない。**
 
 ## 特徴

@@ -2,6 +2,10 @@
 
 # VoxBridge
 
+[![Test](https://github.com/keyiiiii/VoxBridge/actions/workflows/test.yml/badge.svg)](https://github.com/keyiiiii/VoxBridge/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Homebrew](https://img.shields.io/badge/Homebrew-tap-orange.svg)](https://github.com/keyiiiii/homebrew-tap)
+
 A fully local voice input tool for macOS. Just hold a hotkey and speak — your words are transcribed, formatted, and typed into the active app. **All audio is processed locally and never sent over the network.**
 
 ## Features

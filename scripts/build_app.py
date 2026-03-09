@@ -521,6 +521,10 @@ def build_app(version: str = VERSION) -> str:
             "VoxBridge uses the microphone to record your voice for "
             "local speech-to-text conversion. Audio never leaves your Mac."
         ),
+        "NSAccessibilityUsageDescription": (
+            "VoxBridge uses Accessibility to monitor global hotkeys and "
+            "inject transcribed text into the active application."
+        ),
     }
     plist_path = os.path.join(contents, "Info.plist")
     with open(plist_path, "wb") as f:

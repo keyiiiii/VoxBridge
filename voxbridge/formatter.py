@@ -141,6 +141,14 @@ class Formatter:
             print(f"[Formatter] Ollama error (using raw text): {e}")
             return text
 
+    @staticmethod
+    def _find_ollama_bin() -> str:
+        """Find the ollama binary in common install locations."""
+        for path in ("/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"):
+            if os.path.isfile(path):
+                return path
+        return "ollama"  # fallback to PATH lookup by subprocess
+
     def pull_model(self, model_name: str | None = None,
                    on_progress=None, on_complete=None, on_error=None) -> None:
         """Pull an Ollama model in a background thread.
@@ -154,7 +162,8 @@ class Formatter:
         if model_name is None:
             model_name = self.model
 
-        ollama_bin = shutil.which("ollama") or "/usr/local/bin/ollama"
+        ollama_bin = shutil.which("ollama") or self._find_ollama_bin()
+
 
         def _run():
             try:

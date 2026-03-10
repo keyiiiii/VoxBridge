@@ -345,9 +345,9 @@ class StatusBarItem(NSObject):
         self._install_ollama_item.setHidden_(ollama_available)
         menu.addItem_(self._install_ollama_item)
 
-        # Download Qwen model (hidden by default, shown when Ollama available but model missing)
+        # Download Qwen 3 model (hidden by default, shown when Ollama available but model missing)
         self._download_model_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "Download Qwen model...", "downloadModelClicked:", ""
+            "Download Qwen 3 model...", "downloadModelClicked:", ""
         )
         self._download_model_item.setTarget_(self)
         self._download_model_item.setHidden_(not ollama_available or model_available)
@@ -417,7 +417,7 @@ class StatusBarItem(NSObject):
             self._on_install_ollama()
 
     def downloadModelClicked_(self, sender):
-        """Menu callback for Download Qwen model."""
+        """Menu callback for Download Qwen 3 model."""
         if self._on_download_model:
             self._on_download_model()
 
@@ -440,7 +440,7 @@ class StatusBarItem(NSObject):
 
     @objc.python_method
     def set_model_available(self, available: bool) -> None:
-        """Show/hide the Download Qwen model menu item."""
+        """Show/hide the Download Qwen 3 model menu item."""
         # Only show when Ollama is available (install item hidden) but model missing
         ollama_present = self._install_ollama_item.isHidden()
         self._download_model_item.setHidden_(not ollama_present or available)
@@ -473,10 +473,10 @@ class StatusBarItem(NSObject):
 
     @objc.python_method
     def set_download_in_progress(self, in_progress: bool) -> None:
-        """Disable/enable the Download Qwen model menu item during download."""
+        """Disable/enable the Download Qwen 3 model menu item during download."""
         if in_progress:
             self._download_model_item.setTitle_("Downloading model...")
             self._download_model_item.setEnabled_(False)
         else:
-            self._download_model_item.setTitle_("Download Qwen model...")
+            self._download_model_item.setTitle_("Download Qwen 3 model...")
             self._download_model_item.setEnabled_(True)

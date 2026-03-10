@@ -10,7 +10,7 @@ class Formatter:
     """Formats transcribed text using a local LLM (Ollama)."""
 
     def __init__(self, config: dict):
-        self.model = config.get("model", "qwen2.5:7b")
+        self.model = config.get("model", "qwen3:8b")
         self.timeout = config.get("timeout", 30)
         self._bundled_prompt_path = config.get("prompt_file", "")
         self._prompt_template = self._load_prompt(self._bundled_prompt_path)

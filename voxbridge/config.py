@@ -17,7 +17,7 @@ _DEFAULT_CONFIG = {
     },
     "formatter": {
         "enabled": True,
-        "model": "qwen2.5:7b",
+        "model": "qwen3:8b",
         "prompt_file": "prompts/format.txt",
         "timeout": 30,
     },

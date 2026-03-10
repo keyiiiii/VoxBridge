@@ -19,7 +19,7 @@ stt:
 # テキスト整形 / 翻訳 (ローカル LLM) 設定
 formatter:
   enabled: true
-  model: "qwen2.5:7b"           # Ollama モデル名
+  model: "qwen3:8b"             # Ollama モデル名
   prompt_file: "prompts/format.txt"
   timeout: 30                    # 秒
   # 翻訳プロンプト (prompts/ フォルダに配置)

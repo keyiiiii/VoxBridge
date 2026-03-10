@@ -58,13 +58,13 @@ Voice input to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) —
 - **macOS 14+** (Sonoma or later, Apple Silicon)
 - **Ollama** (optional) — needed for text formatting and translation mode
 
-### Ollama + Qwen (Optional)
+### Ollama + Qwen 3 (Optional)
 
-[Ollama](https://ollama.com/) is a local LLM server, and [Qwen 2.5](https://qwen2.5.ai/) is an AI language model that runs on it. VoxBridge uses Qwen to clean up transcribed text — removing filler words ("um", "uh") and adding proper punctuation. **VoxBridge works without it** — formatting is skipped and raw STT output is used directly.
+[Ollama](https://ollama.com/) is a local LLM server, and [Qwen 3](https://github.com/QwenLM/Qwen3) is an AI language model that runs on it. VoxBridge uses Qwen to clean up transcribed text — removing filler words ("um", "uh") and adding proper punctuation. **VoxBridge works without it** — formatting is skipped and raw STT output is used directly.
 
 **From the menu bar (easiest):**
 
-If Ollama is not detected, menu bar **VB** shows **Install Ollama...** — click to open the download page. After installing, if the model is not yet downloaded, **Download Qwen model...** appears — click to download it in the background with progress shown in the overlay.
+If Ollama is not detected, menu bar **VB** shows **Install Ollama...** — click to open the download page. After installing, if the model is not yet downloaded, **Download Qwen 3 model...** appears — click to download it in the background with progress shown in the overlay.
 
 **Manual setup:**
 
@@ -72,7 +72,7 @@ If Ollama is not detected, menu bar **VB** shows **Install Ollama...** — click
 2. Launch the Ollama app (it runs in the menu bar)
 3. Open Terminal and run:
    ```bash
-   ollama pull qwen2.5:7b
+   ollama pull qwen3:8b
    ```
 
 **Homebrew (for developers):**
@@ -80,7 +80,7 @@ If Ollama is not detected, menu bar **VB** shows **Install Ollama...** — click
 ```bash
 brew install ollama
 ollama serve
-ollama pull qwen2.5:7b
+ollama pull qwen3:8b
 ```
 
 If Ollama is not installed or the server is not running, formatting is automatically disabled. You can toggle it from the menu bar (**VB** > **Formatting** > **Off / On**).
@@ -180,7 +180,7 @@ Formatting      ▶ Off / On / Translate (JA → EN) / Translate (EN → JA)
 ─────────
 Edit Formatting Prompt...
 Install Ollama...          (shown when Ollama is not detected)
-Download Qwen model...     (shown when model is not downloaded)
+Download Qwen 3 model...     (shown when model is not downloaded)
 ─────────
 Launch at Login
 ─────────
@@ -241,7 +241,7 @@ stt:
 # Text formatting (Ollama)
 formatter:
   enabled: true        # Set to false to skip formatting
-  model: "qwen2.5:7b"  # Ollama model name
+  model: "qwen3:8b"  # Ollama model name
 
 # Apps that receive Enter after text injection
 injector:
@@ -282,7 +282,7 @@ curl -s http://localhost:11434/api/tags | python3 -m json.tool
 ollama list
 
 # Re-download the model
-ollama pull qwen2.5:7b
+ollama pull qwen3:8b
 ```
 
 If Ollama is unavailable, formatting is automatically skipped — no errors occur.

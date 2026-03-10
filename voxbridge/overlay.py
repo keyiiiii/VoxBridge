@@ -17,6 +17,8 @@ from AppKit import (
 from Foundation import NSObject
 import objc
 
+from AppKit import NSBundle
+
 from .constants import (
     FORMAT_LEVELS,
     FORMAT_LEVEL_LABELS,
@@ -25,6 +27,19 @@ from .constants import (
     NS_WINDOW_CAN_JOIN_ALL_SPACES,
     STT_MODELS,
 )
+
+
+def _get_version() -> str:
+    """Get app version from Info.plist (.app) or __init__.py (CLI)."""
+    info = NSBundle.mainBundle().infoDictionary()
+    if info:
+        bundle_id = info.get("CFBundleIdentifier", "")
+        if "voxbridge" in bundle_id.lower():
+            version = info.get("CFBundleShortVersionString")
+            if version:
+                return version
+    from . import __version__
+    return __version__
 
 # NSPanel style: borderless + non-activating (shows without stealing focus)
 _PANEL_STYLE = NSWindowStyleMaskBorderless | NS_NON_ACTIVATING_PANEL_MASK
@@ -254,8 +269,9 @@ class StatusBarItem(NSObject):
 
         menu = NSMenu.alloc().init()
 
+        version = _get_version()
         title_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "VoxBridge", None, ""
+            f"VoxBridge v{version}", None, ""
         )
         title_item.setEnabled_(False)
         menu.addItem_(title_item)

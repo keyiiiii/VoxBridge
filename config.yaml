@@ -16,12 +16,15 @@ stt:
   device: "cpu"        # cpu (Apple Silicon は CPU でも高速)
   compute_type: "int8" # int8, float16, float32
 
-# テキスト整形 (ローカル LLM) 設定
+# テキスト整形 / 翻訳 (ローカル LLM) 設定
 formatter:
   enabled: true
   model: "qwen2.5:7b"           # Ollama モデル名
   prompt_file: "prompts/format.txt"
   timeout: 30                    # 秒
+  # 翻訳プロンプト (prompts/ フォルダに配置)
+  # translate_ja_en: "prompts/translate_ja_en.txt"
+  # translate_en_ja: "prompts/translate_en_ja.txt"
 
 # テキスト入力注入設定
 injector:

@@ -17,6 +17,14 @@ class Formatter:
         self._user_prompt_path = None  # Set by ensure_user_prompt()
         self._client = None
 
+        # Translation prompt paths (resolved in _load_prompt)
+        self._translate_prompts = {}
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for key, filename in [("ja_en", "translate_ja_en.txt"), ("en_ja", "translate_en_ja.txt")]:
+            path = os.path.join(project_root, "prompts", filename)
+            if os.path.exists(path):
+                self._translate_prompts[key] = self._load_prompt(path)
+
     def _get_client(self):
         """Get or create an Ollama client with timeout."""
         if self._client is None:
@@ -79,8 +87,12 @@ class Formatter:
         self._user_prompt_path = user_prompt_path
         return user_prompt_path
 
-    def format(self, text: str) -> str:
-        """Format transcribed text using the local LLM.
+    def format(self, text: str, mode: str = "format") -> str:
+        """Format or translate transcribed text using the local LLM.
+
+        Args:
+            text: Transcribed text to process.
+            mode: "format", "translate_ja_en", or "translate_en_ja".
 
         Falls back to raw text if Ollama is unavailable.
         """
@@ -88,8 +100,10 @@ class Formatter:
             return text
 
         try:
-            # Re-read from user file so edits take effect immediately
-            if self._user_prompt_path:
+            if mode in ("translate_ja_en", "translate_en_ja"):
+                key = mode.replace("translate_", "")
+                template = self._translate_prompts.get(key, self._prompt_template)
+            elif self._user_prompt_path:
                 template = self._load_prompt(self._user_prompt_path)
             else:
                 template = self._prompt_template

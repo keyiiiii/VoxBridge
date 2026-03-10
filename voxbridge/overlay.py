@@ -153,10 +153,12 @@ _HOTKEY_LABELS = {
 _STT_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
 
 # Formatting level options
-_FORMAT_LEVELS = ["off", "on"]
+_FORMAT_LEVELS = ["off", "on", "translate_ja_en", "translate_en_ja"]
 _FORMAT_LEVEL_LABELS = {
     "off": "Off",
     "on": "On",
+    "translate_ja_en": "Translate (JA → EN)",
+    "translate_en_ja": "Translate (EN → JA)",
 }
 
 
@@ -277,8 +279,8 @@ class StatusBarItem(NSObject):
             item.setRepresentedObject_(level)
             if level == current_format_level:
                 item.setState_(1)
-            # Disable "On" when Ollama or model is not available
-            if level == "on" and not formatter_ready:
+            # Disable options requiring Ollama when not available
+            if level != "off" and not formatter_ready:
                 item.setEnabled_(False)
             format_menu.addItem_(item)
             self._format_items[level] = item
@@ -417,18 +419,20 @@ class StatusBarItem(NSObject):
         ollama_present = self._install_ollama_item.isHidden()
         model_present = self._download_model_item.isHidden()
         formatter_ready = ollama_present and model_present
-        on_item = self._format_items.get("on")
-        if on_item:
-            on_item.setEnabled_(formatter_ready)
-            # Auto-switch to Off if On is selected but unavailable
-            if not formatter_ready and self._current_format_level == "on":
-                on_item.setState_(0)
-                off_item = self._format_items.get("off")
-                if off_item:
-                    off_item.setState_(1)
-                self._current_format_level = "off"
-                if self._on_format_level_change:
-                    self._on_format_level_change("off")
+        # Enable/disable all options that require Ollama
+        for level, item in self._format_items.items():
+            if level != "off":
+                item.setEnabled_(formatter_ready)
+        # Auto-switch to Off if current selection requires Ollama but unavailable
+        if not formatter_ready and self._current_format_level != "off":
+            for item in self._format_items.values():
+                item.setState_(0)
+            off_item = self._format_items.get("off")
+            if off_item:
+                off_item.setState_(1)
+            self._current_format_level = "off"
+            if self._on_format_level_change:
+                self._on_format_level_change("off")
 
     @objc.python_method
     def set_download_in_progress(self, in_progress: bool) -> None:

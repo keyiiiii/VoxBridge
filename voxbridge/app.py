@@ -148,6 +148,8 @@ class VoxBridgeApp:
         # State
         self._recording = False
         self._processing = False
+        self._live_preview_timer: threading.Timer | None = None
+        self._last_preview_text = ""
 
     @property
     def stt(self) -> STT:
@@ -326,7 +328,7 @@ class VoxBridgeApp:
     def _get_effective_format_level(self) -> str:
         """Return format level: saved file > config enabled flag > default 'on'."""
         saved = self._read_pref(self._FORMAT_LEVEL_FILE)
-        if saved in ("off", "on"):
+        if saved in ("off", "on", "translate_ja_en", "translate_en_ja"):
             return saved
         if not self.config["formatter"].get("enabled", True):
             return "off"
@@ -335,7 +337,13 @@ class VoxBridgeApp:
     def _on_format_level_change(self, level: str) -> None:
         """Called when user selects a new formatting level from the menu."""
         self._write_pref(self._FORMAT_LEVEL_FILE, level)
-        label = "On" if level == "on" else "Off"
+        labels = {
+            "off": "Off",
+            "on": "On",
+            "translate_ja_en": "Translate (JA → EN)",
+            "translate_en_ja": "Translate (EN → JA)",
+        }
+        label = labels.get(level, level)
         self._show_overlay(
             f"Formatting: {label}", color="success", auto_hide=True
         )
@@ -483,6 +491,7 @@ class VoxBridgeApp:
     def _cancel_recording(self) -> None:
         """Cancel the current recording and discard audio."""
         self._recording = False
+        self._stop_live_preview()
         self.recorder.stop()  # discard audio
         self._show_overlay("Cancelled", color="default", auto_hide=True)
         print("[VoxBridge] Recording cancelled.")
@@ -492,17 +501,62 @@ class VoxBridgeApp:
         if self.overlay:
             self.overlay.show(text, color=color, auto_hide=auto_hide)
 
+    def _start_live_preview(self) -> None:
+        """Start periodic live transcription preview during recording."""
+        self._last_preview_text = ""
+
+        def _preview_tick():
+            if not self._recording:
+                return
+            snapshot = self.recorder.get_audio_snapshot()
+            if snapshot is not None and len(snapshot) > 8000:  # > 0.5s
+                try:
+                    text = self.stt.transcribe(
+                        snapshot, language=self.config.get("language")
+                    )
+                    if text and text.strip() and text != self._last_preview_text:
+                        self._last_preview_text = text
+                        display = text[:50] + ("..." if len(text) > 50 else "")
+                        AppHelper.callAfter(
+                            lambda d=display: self._show_overlay(
+                                f"🎤 {d}", color="recording"
+                            )
+                        )
+                except Exception:
+                    pass  # Don't interrupt recording on preview errors
+            # Schedule next tick
+            if self._recording:
+                self._live_preview_timer = threading.Timer(1.5, _preview_tick)
+                self._live_preview_timer.daemon = True
+                self._live_preview_timer.start()
+
+        # Start first tick after initial delay
+        self._live_preview_timer = threading.Timer(1.5, _preview_tick)
+        self._live_preview_timer.daemon = True
+        self._live_preview_timer.start()
+
+    def _stop_live_preview(self) -> None:
+        """Stop live transcription preview."""
+        if self._live_preview_timer:
+            self._live_preview_timer.cancel()
+            self._live_preview_timer = None
+        self._last_preview_text = ""
+
     def _on_press(self) -> None:
         """Hotkey press handler - start recording."""
         if not self._recording and not self._processing:
             self._recording = True
             self._show_overlay("Recording...", color="recording")
             self.recorder.start()
+            # Start live preview if STT model is already loaded
+            if self._stt is not None:
+                self._start_live_preview()
 
     def _on_release(self) -> None:
         """Hotkey release handler - stop recording and process."""
         if self._recording:
             self._recording = False
+            self._stop_live_preview()
             audio = self.recorder.stop()
 
             if audio is not None and len(audio) > 1600:  # > 0.1s of audio
@@ -538,13 +592,21 @@ class VoxBridgeApp:
                 )
                 return
 
-            # Step 2: Format (optional)
-            if self._get_effective_format_level() == "on":
+            # Step 2: Format / Translate (optional)
+            format_level = self._get_effective_format_level()
+            if format_level == "on":
                 AppHelper.callAfter(
                     lambda: self._show_overlay("Formatting...", color="default")
                 )
                 formatted = self.formatter.format(text)
                 print(f"[Formatter] Result: {formatted}")
+            elif format_level.startswith("translate_"):
+                direction = "JA→EN" if format_level == "translate_ja_en" else "EN→JA"
+                AppHelper.callAfter(
+                    lambda d=direction: self._show_overlay(f"Translating ({d})...", color="default")
+                )
+                formatted = self.formatter.format(text, mode=format_level)
+                print(f"[Translator] {direction}: {formatted}")
             else:
                 formatted = text
 

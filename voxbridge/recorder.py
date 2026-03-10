@@ -54,6 +54,13 @@ class Recorder:
             self._frames = []
             return audio
 
+    def get_audio_snapshot(self) -> np.ndarray | None:
+        """Return a copy of the current audio buffer without stopping recording."""
+        with self._lock:
+            if not self._frames:
+                return None
+            return np.concatenate(self._frames, axis=0).flatten()
+
     def _audio_callback(self, indata, frames, time_info, status):
         """Sounddevice callback - collects audio frames."""
         if status:

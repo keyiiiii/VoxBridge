@@ -12,6 +12,8 @@ A fully local voice input tool for macOS. Just hold a hotkey and speak — your 
 
 - **Fully local processing** — Speech recognition (Whisper) and text formatting (Ollama) run entirely on-device
 - **Self-contained .app** — Bundles Python.framework and all dependencies. Just copy and run
+- **Live preview** — See real-time transcription in the overlay while recording
+- **Translation mode** — Speak in one language, type in another (JA→EN / EN→JA) using a local LLM
 - **Push-to-talk** — Records only while a modifier key (Option/Ctrl/Shift) is held
 - **Menu bar controls** — Switch hotkey, STT model, and formatting on/off from the menu bar
 - **Editable prompt** — Customize the formatting prompt to your liking; changes take effect immediately
@@ -172,7 +174,7 @@ VoxBridge
 ─────────
 Hotkey          ▶ Right Option / Left Option / ...
 Speech Model    ▶ tiny / base / small / ...
-Formatting      ▶ Off / On
+Formatting      ▶ Off / On / Translate (JA → EN) / Translate (EN → JA)
 ─────────
 Edit Formatting Prompt...
 Install Ollama...          (shown when Ollama is not detected)
@@ -183,7 +185,7 @@ Launch at Login
 Quit
 ```
 
-- **Formatting** — Toggle text formatting on/off. Greyed out when Ollama or the model is unavailable.
+- **Formatting** — Toggle text formatting on/off, or switch to translation mode (JA→EN / EN→JA). Translation uses the local LLM to translate your speech into another language. Greyed out when Ollama or the model is unavailable.
 - **Edit Formatting Prompt...** — Opens the prompt file (`~/Library/Application Support/VoxBridge/format_prompt.txt`) in your text editor. Changes take effect on the next voice input — no restart needed. The file is created from the bundled template on first launch and is never overwritten by updates.
 
 Quit: Menu bar **VB** > **Quit**

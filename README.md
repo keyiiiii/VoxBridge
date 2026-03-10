@@ -56,7 +56,7 @@ Voice input to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) —
 ## Requirements
 
 - **macOS 14+** (Sonoma or later, Apple Silicon)
-- **Ollama** (optional) — only needed for text formatting
+- **Ollama** (optional) — needed for text formatting and translation mode
 
 ### Ollama + Qwen (Optional)
 
@@ -162,8 +162,10 @@ python -m voxbridge --preload
 ## Usage
 
 1. **Hold** the **Right Option key** (default) — recording starts ("Recording..." overlay)
-2. **Release** the key — recording stops → transcription → formatting → text is typed into the active app
-3. In terminal apps (Terminal / iTerm2 etc.), Enter is sent automatically
+2. While recording, a **live transcription preview** appears in the overlay
+3. **Release** the key — recording stops → transcription → formatting → text is typed into the active app
+4. In terminal apps (Terminal / iTerm2 etc.), Enter is sent automatically
+5. Recording has a **60-second limit** (configurable) — a countdown appears in the last 10 seconds, and audio is auto-processed when the limit is reached
 
 ### Menu Bar
 
@@ -301,11 +303,15 @@ python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', devic
 
 ## Release
 
-Pushing a `v*` tag triggers GitHub Actions to automatically build and create a release.
+Pushing a `v*` tag or manually triggering the workflow builds and creates a release. Homebrew tap is updated automatically.
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+# Option 1: Tag push
+git tag v0.8.0
+git push origin v0.8.0
+
+# Option 2: Manual trigger via GitHub CLI
+gh workflow run build-release.yml -f tag=v0.8.0
 ```
 
 ## Project Structure
@@ -316,8 +322,11 @@ VoxBridge/
 ├── README.ja.md                # Japanese documentation
 ├── requirements.txt
 ├── config.yaml                 # Configuration file
+├── CONTRIBUTING.md              # Contributing guidelines
 ├── prompts/
-│   └── format.txt              # Formatting prompt template
+│   ├── format.txt              # Formatting prompt template
+│   ├── translate_ja_en.txt     # Translation prompt (JA → EN)
+│   └── translate_en_ja.txt     # Translation prompt (EN → JA)
 ├── resources/
 │   └── icon.icns               # App icon (prebuilt)
 ├── scripts/
@@ -325,7 +334,8 @@ VoxBridge/
 │   └── launch.sh               # CLI launch helper
 ├── .github/
 │   └── workflows/
-│       └── release.yml         # Release automation (tag push → build → GitHub Releases)
+│       ├── build-release.yml   # Release automation (tag push → build → GitHub Releases → Homebrew)
+│       └── test.yml            # CI tests (push / PR)
 ├── voxbridge/
 │   ├── __init__.py
 │   ├── __main__.py             # Entry point

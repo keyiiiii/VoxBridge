@@ -51,3 +51,27 @@ jobs:
           files: |
             dist/VoxBridge-*.zip
             dist/VoxBridge-*.sha256
+
+      # Homebrew Tap を自動更新
+      - name: Update Homebrew Tap
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          SHA256=$(cat dist/VoxBridge-${VERSION}-arm64.zip.sha256 | awk '{print $1}')
+          echo "Updating homebrew-tap: version=${VERSION}, sha256=${SHA256}"
+
+          # homebrew-tap リポジトリをクローン
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/keyiiiii/homebrew-tap.git" /tmp/homebrew-tap
+          cd /tmp/homebrew-tap
+
+          # Cask ファイルの version と sha256 を更新
+          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/voxbridge.rb
+          sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/voxbridge.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/voxbridge.rb
+          git commit -m "Update VoxBridge to ${VERSION}"
+          git push

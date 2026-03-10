@@ -10,18 +10,28 @@ import sounddevice as sd
 class Recorder:
     """Records audio from the default microphone."""
 
-    def __init__(self, sample_rate: int = 16000, max_duration: int = 60):
+    def __init__(self, sample_rate: int = 16000, max_duration: int = 60,
+                 on_max_reached=None):
         self.sample_rate = sample_rate
         self.max_duration = max_duration
+        self._on_max_reached = on_max_reached
         self._frames: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
         self._lock = threading.Lock()
         self._max_timer: threading.Timer | None = None
+        self._start_time: float | None = None
+
+    def get_elapsed(self) -> float:
+        """Return elapsed recording time in seconds."""
+        if self._start_time is None:
+            return 0.0
+        return time.time() - self._start_time
 
     def start(self) -> None:
         """Start recording audio."""
         with self._lock:
             self._frames = []
+            self._start_time = time.time()
             self._stream = sd.InputStream(
                 samplerate=self.sample_rate,
                 channels=1,
@@ -31,7 +41,9 @@ class Recorder:
             self._stream.start()
 
             # Auto-stop after max_duration
-            self._max_timer = threading.Timer(self.max_duration, self.stop)
+            self._max_timer = threading.Timer(
+                self.max_duration, self._on_max_duration
+            )
             self._max_timer.daemon = True
             self._max_timer.start()
 
@@ -60,6 +72,12 @@ class Recorder:
             if not self._frames:
                 return None
             return np.concatenate(self._frames, axis=0).flatten()
+
+    def _on_max_duration(self) -> None:
+        """Called when max recording duration is reached."""
+        audio = self.stop()
+        if self._on_max_reached:
+            self._on_max_reached(audio)
 
     def _audio_callback(self, indata, frames, time_info, status):
         """Sounddevice callback - collects audio frames."""

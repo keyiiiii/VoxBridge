@@ -41,20 +41,23 @@ class Overlay(NSObject):
         if not self._enabled:
             return
 
-        width = config.get("width", 260)
-        height = config.get("height", 36)
-        margin = config.get("margin", 20)
+        self._width = config.get("width", 260)
+        self._min_height = config.get("height", 36)
+        self._line_height = 18  # Approximate line height for 12.5pt monospace
+        self._max_lines = 6
+        self._margin = config.get("margin", 20)
         opacity = config.get("opacity", 0.88)
         self._auto_hide_delay = config.get("auto_hide_delay", 2.0)
 
         # Position: bottom-right of main screen
         screen = NSScreen.mainScreen().visibleFrame()
-        x = screen.origin.x + screen.size.width - width - margin
-        y = screen.origin.y + margin
+        self._screen_frame = screen
+        x = screen.origin.x + screen.size.width - self._width - self._margin
+        y = screen.origin.y + self._margin
 
         # Create non-activating floating panel
         self._window = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(x, y, width, height),
+            NSMakeRect(x, y, self._width, self._min_height),
             _PANEL_STYLE,
             NSBackingStoreBuffered,
             False,
@@ -78,9 +81,9 @@ class Overlay(NSObject):
         content_view.layer().setCornerRadius_(8)
         content_view.layer().setMasksToBounds_(True)
 
-        # Status label
+        # Status label (multi-line capable)
         self._label = NSTextField.alloc().initWithFrame_(
-            NSMakeRect(12, 6, width - 24, height - 12)
+            NSMakeRect(12, 6, self._width - 24, self._min_height - 12)
         )
         self._label.setStringValue_("")
         self._label.setTextColor_(NSColor.whiteColor())
@@ -89,9 +92,45 @@ class Overlay(NSObject):
         self._label.setBezeled_(False)
         self._label.setEditable_(False)
         self._label.setSelectable_(False)
+        self._label.setMaximumNumberOfLines_(0)  # Unlimited — trimming handled in show()
+        self._label.cell().setWraps_(True)
+        self._label.cell().setLineBreakMode_(0)  # NSLineBreakByWordWrapping
         content_view.addSubview_(self._label)
 
         self._window.orderOut_(None)  # Start hidden
+
+    @objc.python_method
+    def _measure_text_height(self) -> int:
+        """Measure actual rendered text height via NSTextField's cell."""
+        label_width = self._width - 24
+        cell = self._label.cell()
+        needed = cell.cellSizeForBounds_(NSMakeRect(0, 0, label_width, 10000))
+        return int(needed.height)
+
+    @objc.python_method
+    def _trim_to_max_lines(self, text: str) -> str:
+        """Trim text from the front so it fits within max_lines when rendered."""
+        max_height = self._line_height * self._max_lines
+        self._label.setStringValue_(text)
+        if self._measure_text_height() <= max_height:
+            return text
+        # Trim from front character by character (in chunks for efficiency)
+        step = max(1, len(text) // 20)
+        i = 0
+        while i < len(text) - 1:
+            i = min(i + step, len(text) - 1)
+            candidate = "…" + text[i:]
+            self._label.setStringValue_(candidate)
+            if self._measure_text_height() <= max_height:
+                # Fine-tune: step back and go char by char
+                if step > 1:
+                    for j in range(max(0, i - step), i):
+                        candidate = "…" + text[j:]
+                        self._label.setStringValue_(candidate)
+                        if self._measure_text_height() <= max_height:
+                            return candidate
+                return candidate
+        return text[-1:]
 
     @objc.python_method
     def show(self, text: str, color: str = "default", auto_hide: bool = False) -> None:
@@ -99,7 +138,21 @@ class Overlay(NSObject):
         if not self._enabled:
             return
 
-        self._label.setStringValue_(text)
+        # Trim long text to show latest lines only
+        display_text = self._trim_to_max_lines(text)
+        self._label.setStringValue_(display_text)
+
+        # Resize window height based on actual text rendering
+        # Use current screen (follows mouse cursor) instead of cached screen
+        screen = NSScreen.mainScreen().visibleFrame()
+        text_height = self._measure_text_height()
+        new_height = max(self._min_height, 12 + text_height)
+        x = screen.origin.x + screen.size.width - self._width - self._margin
+        y = screen.origin.y + self._margin
+        self._window.setFrame_display_(
+            NSMakeRect(x, y, self._width, new_height), True
+        )
+        self._label.setFrame_(NSMakeRect(12, 6, self._width - 24, new_height - 12))
 
         # Change background color based on state
         colors = {

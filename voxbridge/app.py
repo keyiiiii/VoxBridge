@@ -138,6 +138,7 @@ class VoxBridgeApp:
         self.recorder = Recorder(
             sample_rate=self.config["recording"]["sample_rate"],
             max_duration=self.config["recording"]["max_duration"],
+            on_max_reached=self._on_max_duration_reached,
         )
         self.injector = Injector(self.config["injector"])
 
@@ -149,6 +150,7 @@ class VoxBridgeApp:
         self._recording = False
         self._processing = False
         self._live_preview_timer: threading.Timer | None = None
+        self._countdown_timer: threading.Timer | None = None
         self._last_preview_text = ""
 
     @property
@@ -501,9 +503,33 @@ class VoxBridgeApp:
         if self.overlay:
             self.overlay.show(text, color=color, auto_hide=auto_hide)
 
+    def _on_max_duration_reached(self, audio) -> None:
+        """Called when recording reaches max duration (audio already stopped)."""
+        self._recording = False
+        self._stop_live_preview()
+        max_sec = self.config["recording"]["max_duration"]
+        print(f"[VoxBridge] Max recording duration reached ({max_sec}s)")
+
+        if audio is not None and len(audio) > 1600:
+            self._processing = True
+            AppHelper.callAfter(
+                lambda: self._show_overlay(
+                    f"⏱ Max {max_sec}s reached — processing...", color="warning"
+                )
+            )
+            thread = threading.Thread(
+                target=self._process, args=(audio,), daemon=True
+            )
+            thread.start()
+
     def _start_live_preview(self) -> None:
         """Start periodic live transcription preview during recording."""
         self._last_preview_text = ""
+        self._recording_start_time = time.time()
+        max_duration = self.config["recording"]["max_duration"]
+
+        def _get_remaining():
+            return max_duration - (time.time() - self._recording_start_time)
 
         def _preview_tick():
             if not self._recording:
@@ -516,14 +542,20 @@ class VoxBridgeApp:
                     )
                     if text and text.strip() and text != self._last_preview_text:
                         self._last_preview_text = text
-                        display = text[:50] + ("..." if len(text) > 50 else "")
+                        remaining = _get_remaining()
+                        if remaining <= 10:
+                            suffix = f"\n⏱ {int(remaining)}s remaining"
+                            color = "warning"
+                        else:
+                            suffix = ""
+                            color = "recording"
                         AppHelper.callAfter(
-                            lambda d=display: self._show_overlay(
-                                f"🎤 {d}", color="recording"
+                            lambda d=text, s=suffix, c=color: self._show_overlay(
+                                f"🎤 {d}{s}", color=c
                             )
                         )
                 except Exception:
-                    pass  # Don't interrupt recording on preview errors
+                    pass
             # Schedule next tick
             if self._recording:
                 self._live_preview_timer = threading.Timer(1.5, _preview_tick)
@@ -535,11 +567,36 @@ class VoxBridgeApp:
         self._live_preview_timer.daemon = True
         self._live_preview_timer.start()
 
+        # Countdown: fires every 1s during last 10 seconds
+        def _countdown_tick():
+            if not self._recording:
+                return
+            remaining = _get_remaining()
+            if remaining <= 10:
+                display_text = self._last_preview_text or "Recording..."
+                AppHelper.callAfter(
+                    lambda r=int(remaining), d=display_text: self._show_overlay(
+                        f"🎤 {d}\n⏱ {r}s remaining", color="warning"
+                    )
+                )
+            if remaining > 0 and self._recording:
+                self._countdown_timer = threading.Timer(1.0, _countdown_tick)
+                self._countdown_timer.daemon = True
+                self._countdown_timer.start()
+
+        wait = max(0.0, max_duration - 10)
+        self._countdown_timer = threading.Timer(wait, _countdown_tick)
+        self._countdown_timer.daemon = True
+        self._countdown_timer.start()
+
     def _stop_live_preview(self) -> None:
-        """Stop live transcription preview."""
+        """Stop live transcription preview and countdown."""
         if self._live_preview_timer:
             self._live_preview_timer.cancel()
             self._live_preview_timer = None
+        if self._countdown_timer:
+            self._countdown_timer.cancel()
+            self._countdown_timer = None
         self._last_preview_text = ""
 
     def _on_press(self) -> None:

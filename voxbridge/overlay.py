@@ -17,8 +17,17 @@ from AppKit import (
 from Foundation import NSObject
 import objc
 
+from .constants import (
+    FORMAT_LEVELS,
+    FORMAT_LEVEL_LABELS,
+    HOTKEY_LABELS,
+    NS_NON_ACTIVATING_PANEL_MASK,
+    NS_WINDOW_CAN_JOIN_ALL_SPACES,
+    STT_MODELS,
+)
+
 # NSPanel style: borderless + non-activating (shows without stealing focus)
-_PANEL_STYLE = NSWindowStyleMaskBorderless | (1 << 7)  # NSNonactivatingPanelMask
+_PANEL_STYLE = NSWindowStyleMaskBorderless | NS_NON_ACTIVATING_PANEL_MASK
 
 
 class Overlay(NSObject):
@@ -71,9 +80,7 @@ class Overlay(NSObject):
         )
         self._window.setHasShadow_(True)
         self._window.setIgnoresMouseEvents_(True)
-        self._window.setCollectionBehavior_(
-            1 << 4  # NSWindowCollectionBehaviorCanJoinAllSpaces
-        )
+        self._window.setCollectionBehavior_(NS_WINDOW_CAN_JOIN_ALL_SPACES)
 
         # Rounded corners
         content_view = self._window.contentView()
@@ -191,29 +198,6 @@ class Overlay(NSObject):
         self.hide()
 
 
-# Display labels for hotkey options
-_HOTKEY_LABELS = {
-    "alt_r": "Right Option",
-    "alt_l": "Left Option",
-    "ctrl_r": "Right Control",
-    "ctrl_l": "Left Control",
-    "shift_r": "Right Shift",
-    "shift_l": "Left Shift",
-}
-
-
-# Available STT model sizes
-_STT_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
-
-# Formatting level options
-_FORMAT_LEVELS = ["off", "on", "translate_ja_en", "translate_en_ja"]
-_FORMAT_LEVEL_LABELS = {
-    "off": "Off",
-    "on": "On",
-    "translate_ja_en": "Translate (JA → EN)",
-    "translate_en_ja": "Translate (EN → JA)",
-}
-
 
 class StatusBarItem(NSObject):
     """Menu bar status item for VoxBridge."""
@@ -281,7 +265,7 @@ class StatusBarItem(NSObject):
         # Hotkey submenu
         hotkey_menu = NSMenu.alloc().init()
         self._hotkey_items = {}
-        for key, label in _HOTKEY_LABELS.items():
+        for key, label in HOTKEY_LABELS.items():
             item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
                 label, "hotkeySelected:", ""
             )
@@ -301,7 +285,7 @@ class StatusBarItem(NSObject):
         # Model submenu
         model_menu = NSMenu.alloc().init()
         self._model_items = {}
-        for model_name in _STT_MODELS:
+        for model_name in STT_MODELS:
             item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
                 model_name, "modelSelected:", ""
             )
@@ -323,8 +307,8 @@ class StatusBarItem(NSObject):
         format_menu.setAutoenablesItems_(False)
         self._format_items = {}
         formatter_ready = ollama_available and model_available
-        for level in _FORMAT_LEVELS:
-            label = _FORMAT_LEVEL_LABELS[level]
+        for level in FORMAT_LEVELS:
+            label = FORMAT_LEVEL_LABELS[level]
             item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
                 label, "formatLevelSelected:", ""
             )

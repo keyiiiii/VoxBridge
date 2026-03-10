@@ -16,38 +16,26 @@ from PyObjCTools import AppHelper
 import objc
 
 from .config import load_config
+from .constants import (
+    COUNTDOWN_INTERVAL_SEC,
+    COUNTDOWN_START_SEC,
+    FORMAT_LEVEL_LABELS,
+    HOTKEY_LABELS,
+    KEY_ESCAPE,
+    MIN_AUDIO_SAMPLES,
+    MIN_PREVIEW_SAMPLES,
+    MODIFIER_FLAGS,
+    MODIFIER_KEY_CODES,
+    NS_FLAGS_CHANGED_MASK,
+    NS_KEY_DOWN_MASK,
+    PREVIEW_INTERVAL_SEC,
+)
 from .formatter import Formatter
 from .injector import Injector
 from .overlay import Overlay, StatusBarItem
+from . import preferences as prefs
 from .recorder import Recorder
 from .stt import STT
-
-# macOS virtual key codes for modifier keys
-_MODIFIER_KEY_CODES = {
-    "alt_r": 61,
-    "alt_l": 58,
-    "ctrl_r": 62,
-    "ctrl_l": 59,
-    "shift_r": 60,
-    "shift_l": 56,
-}
-
-# NSEvent masks
-_NSFlagsChangedMask = 1 << 12
-_NSKeyDownMask = 1 << 10
-
-# Key codes
-_KEY_ESCAPE = 53
-
-# Modifier flags
-_MODIFIER_FLAGS = {
-    "alt_r": 1 << 19,   # NSAlternateKeyMask
-    "alt_l": 1 << 19,
-    "ctrl_r": 1 << 18,  # NSControlKeyMask
-    "ctrl_l": 1 << 18,
-    "shift_r": 1 << 17, # NSShiftKeyMask
-    "shift_l": 1 << 17,
-}
 
 
 class _AppDelegate(NSObject):
@@ -66,15 +54,17 @@ class _AppDelegate(NSObject):
         app = self._voxbridge
         app.overlay = Overlay.create(app.config["overlay"])
         # Ensure user prompt file exists (copy bundled template on first launch)
-        app.formatter.ensure_user_prompt(app._USER_PROMPT_FILE)
-        hotkey = app._get_effective_hotkey()
-        model = app._get_effective_model()
-        format_level = app._get_effective_format_level()
+        app.formatter.ensure_user_prompt(prefs.USER_PROMPT_FILE)
+        hotkey = prefs.get_hotkey(app.config.get("hotkey", "alt_r"))
+        model = prefs.get_model(app.config["stt"].get("model", "small"))
+        format_level = prefs.get_format_level(
+            app.config["formatter"].get("enabled", True)
+        )
         app.status_bar = StatusBarItem.create(
             current_hotkey=hotkey,
             current_model=model,
             current_format_level=format_level,
-            launch_at_login=app._is_launch_at_login(),
+            launch_at_login=prefs.is_launch_at_login(),
             on_hotkey_change=app._on_hotkey_change,
             on_model_change=app._on_model_change,
             on_format_level_change=app._on_format_level_change,
@@ -152,12 +142,15 @@ class VoxBridgeApp:
         self._live_preview_timer: threading.Timer | None = None
         self._countdown_timer: threading.Timer | None = None
         self._last_preview_text = ""
+        self._recording_start_time: float = 0.0
 
     @property
     def stt(self) -> STT:
         if self._stt is None:
             stt_config = dict(self.config["stt"])
-            stt_config["model"] = self._get_effective_model()
+            stt_config["model"] = prefs.get_model(
+                self.config["stt"].get("model", "small")
+            )
             self._stt = STT(stt_config)
         return self._stt
 
@@ -166,6 +159,8 @@ class VoxBridgeApp:
         if self._formatter is None:
             self._formatter = Formatter(self.config["formatter"])
         return self._formatter
+
+    # --- Accessibility ---
 
     def _reset_accessibility_if_needed(self) -> None:
         """Reset accessibility permission if the app binary has changed.
@@ -213,6 +208,8 @@ class VoxBridgeApp:
             with open(sig_file, "w") as f:
                 f.write(current_hash)
 
+    # --- Preload & Ollama ---
+
     def _start_preload(self) -> None:
         """Start STT model preload in a background thread with status overlay."""
         cached = self.stt.is_model_cached()
@@ -223,10 +220,10 @@ class VoxBridgeApp:
         def _do_preload():
             try:
                 self.stt.preload()
-                effective_hotkey = self._get_effective_hotkey()
+                hotkey = prefs.get_hotkey(self.config.get("hotkey", "alt_r"))
                 AppHelper.callAfter(
                     lambda: self._show_overlay(
-                        f"VoxBridge Ready ({effective_hotkey})",
+                        f"VoxBridge Ready ({hotkey})",
                         color="success",
                         auto_hide=True,
                     )
@@ -248,13 +245,7 @@ class VoxBridgeApp:
         """Check Ollama and model availability; update menu items."""
         # Delay to avoid conflicting with preload overlay messages
         time.sleep(3)
-        tags = self.formatter._fetch_tags()
-        ollama_ok = tags is not None
-        model_ok = ollama_ok and any(
-            m.get("name", "") == self.formatter.model
-            or m.get("name", "").startswith(self.formatter.model + "-")
-            for m in tags
-        )
+        ollama_ok, model_ok = self.formatter.check_status()
 
         if self.status_bar:
             AppHelper.callAfter(
@@ -286,66 +277,19 @@ class VoxBridgeApp:
         else:
             print("[VoxBridge] Ollama and model ready")
 
-    _SUPPORT_DIR = os.path.join(
-        os.path.expanduser("~"), "Library", "Application Support", "VoxBridge"
-    )
-    _HOTKEY_FILE = os.path.join(_SUPPORT_DIR, "hotkey")
-    _MODEL_FILE = os.path.join(_SUPPORT_DIR, "stt_model")
-    _FORMAT_LEVEL_FILE = os.path.join(_SUPPORT_DIR, "formatter_level")
-    _USER_PROMPT_FILE = os.path.join(_SUPPORT_DIR, "format_prompt.txt")
-    _LAUNCH_AT_LOGIN_FILE = os.path.join(_SUPPORT_DIR, "launch_at_login")
-
-    def _read_pref(self, path: str) -> str | None:
-        """Read a single-value preference file. Returns None if missing."""
-        try:
-            with open(path, "r") as f:
-                return f.read().strip() or None
-        except FileNotFoundError:
-            return None
-
-    def _write_pref(self, path: str, value: str) -> None:
-        """Write a single-value preference file."""
-        os.makedirs(self._SUPPORT_DIR, exist_ok=True)
-        with open(path, "w") as f:
-            f.write(value)
-
-    def _get_effective_hotkey(self) -> str:
-        """Return hotkey: user override > config.yaml > default."""
-        saved = self._read_pref(self._HOTKEY_FILE)
-        if saved and saved in _MODIFIER_KEY_CODES:
-            return saved
-        return self.config.get("hotkey", "alt_r")
-
-    def _get_effective_model(self) -> str:
-        """Return STT model: user override > config.yaml > default."""
-        return self._read_pref(self._MODEL_FILE) or self.config["stt"].get("model", "small")
+    # --- Menu callbacks ---
 
     def _on_model_change(self, model_name: str) -> None:
         """Called when user selects a new STT model from the menu."""
-        self._write_pref(self._MODEL_FILE, model_name)
+        prefs.set_model(model_name)
         self._stt = None  # Reset so next transcription uses the new model
         self._show_overlay(f"STT Model: {model_name}", color="success", auto_hide=True)
         print(f"[VoxBridge] STT model changed to: {model_name}")
 
-    def _get_effective_format_level(self) -> str:
-        """Return format level: saved file > config enabled flag > default 'on'."""
-        saved = self._read_pref(self._FORMAT_LEVEL_FILE)
-        if saved in ("off", "on", "translate_ja_en", "translate_en_ja"):
-            return saved
-        if not self.config["formatter"].get("enabled", True):
-            return "off"
-        return "on"
-
     def _on_format_level_change(self, level: str) -> None:
         """Called when user selects a new formatting level from the menu."""
-        self._write_pref(self._FORMAT_LEVEL_FILE, level)
-        labels = {
-            "off": "Off",
-            "on": "On",
-            "translate_ja_en": "Translate (JA → EN)",
-            "translate_en_ja": "Translate (EN → JA)",
-        }
-        label = labels.get(level, level)
+        prefs.set_format_level(level)
+        label = FORMAT_LEVEL_LABELS.get(level, level)
         self._show_overlay(
             f"Formatting: {label}", color="success", auto_hide=True
         )
@@ -393,32 +337,25 @@ class VoxBridgeApp:
 
     def _on_edit_prompt(self) -> None:
         """Open user's prompt file in the default text editor."""
-        path = self._USER_PROMPT_FILE
+        path = prefs.USER_PROMPT_FILE
         # ensure_user_prompt already called at startup, but just in case
         self.formatter.ensure_user_prompt(path)
         subprocess.Popen(["open", "-t", path])
 
-    def _is_launch_at_login(self) -> bool:
-        """Check if launch-at-login is enabled."""
-        return os.path.isfile(self._LAUNCH_AT_LOGIN_FILE)
-
     def _set_launch_at_login(self, enabled: bool) -> None:
         """Enable or disable launch-at-login via macOS Login Items."""
-        os.makedirs(self._SUPPORT_DIR, exist_ok=True)
         bundle_path = NSBundle.mainBundle().bundlePath()
         if not bundle_path.endswith(".app"):
             self._show_overlay("Login item: .app only", color="warning", auto_hide=True)
             return
 
         if enabled:
-            # Register with Login Items via osascript
             subprocess.run([
                 "osascript", "-e",
                 f'tell application "System Events" to make login item at end '
                 f'with properties {{path:"{bundle_path}", hidden:false}}'
             ], capture_output=True)
-            with open(self._LAUNCH_AT_LOGIN_FILE, "w") as f:
-                f.write("1")
+            prefs.set_launch_at_login_flag(True)
             self._show_overlay("Launch at login: ON", color="success", auto_hide=True)
             print(f"[VoxBridge] Launch at login enabled: {bundle_path}")
         else:
@@ -427,41 +364,39 @@ class VoxBridgeApp:
                 "osascript", "-e",
                 f'tell application "System Events" to delete login item "{app_name}"'
             ], capture_output=True)
-            if os.path.isfile(self._LAUNCH_AT_LOGIN_FILE):
-                os.remove(self._LAUNCH_AT_LOGIN_FILE)
+            prefs.set_launch_at_login_flag(False)
             self._show_overlay("Launch at login: OFF", color="success", auto_hide=True)
             print("[VoxBridge] Launch at login disabled")
 
     def _on_hotkey_change(self, key: str) -> None:
         """Called when user selects a new hotkey from the menu."""
-        self._hotkey_code = _MODIFIER_KEY_CODES.get(key)
-        self._hotkey_flag = _MODIFIER_FLAGS.get(key, 0)
-        self._write_pref(self._HOTKEY_FILE, key)
-        from .overlay import _HOTKEY_LABELS
-        label = _HOTKEY_LABELS.get(key, key)
+        self._hotkey_code = MODIFIER_KEY_CODES.get(key)
+        self._hotkey_flag = MODIFIER_FLAGS.get(key, 0)
+        prefs.set_hotkey(key)
+        label = HOTKEY_LABELS.get(key, key)
         self._show_overlay(f"Hotkey: {label}", color="success", auto_hide=True)
         print(f"[VoxBridge] Hotkey changed to: {key}")
 
+    # --- Hotkey ---
+
     def _setup_hotkey(self) -> None:
         """Configure the global push-to-talk hotkey using NSEvent monitors."""
-        hotkey_name = self._get_effective_hotkey()
-        self._hotkey_code = _MODIFIER_KEY_CODES.get(hotkey_name)
-        self._hotkey_flag = _MODIFIER_FLAGS.get(hotkey_name, 0)
+        hotkey_name = prefs.get_hotkey(self.config.get("hotkey", "alt_r"))
+        self._hotkey_code = MODIFIER_KEY_CODES.get(hotkey_name)
+        self._hotkey_flag = MODIFIER_FLAGS.get(hotkey_name, 0)
 
         if self._hotkey_code is not None:
-            # Modifier key (Option, Ctrl, Shift) – monitor flag changes
             NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
-                _NSFlagsChangedMask, self._on_flags_changed,
+                NS_FLAGS_CHANGED_MASK, self._on_flags_changed,
             )
             NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
-                _NSFlagsChangedMask, self._on_flags_changed_local,
+                NS_FLAGS_CHANGED_MASK, self._on_flags_changed_local,
             )
-            # Esc key to cancel recording
             NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
-                _NSKeyDownMask, self._on_key_down,
+                NS_KEY_DOWN_MASK, self._on_key_down,
             )
             NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
-                _NSKeyDownMask, self._on_key_down_local,
+                NS_KEY_DOWN_MASK, self._on_key_down_local,
             )
             print(f"[VoxBridge] Hotkey: {hotkey_name} (push-to-talk, NSEvent monitor)")
         else:
@@ -478,11 +413,11 @@ class VoxBridgeApp:
     def _on_flags_changed_local(self, event):
         """Local monitor callback (when VoxBridge window is focused)."""
         self._on_flags_changed(event)
-        return event  # Local monitors must return the event
+        return event
 
     def _on_key_down(self, event) -> None:
         """Global monitor for key-down events (Esc to cancel)."""
-        if event.keyCode() == _KEY_ESCAPE and self._recording:
+        if event.keyCode() == KEY_ESCAPE and self._recording:
             self._cancel_recording()
 
     def _on_key_down_local(self, event):
@@ -490,11 +425,13 @@ class VoxBridgeApp:
         self._on_key_down(event)
         return event
 
+    # --- Recording ---
+
     def _cancel_recording(self) -> None:
         """Cancel the current recording and discard audio."""
         self._recording = False
         self._stop_live_preview()
-        self.recorder.stop()  # discard audio
+        self.recorder.stop()
         self._show_overlay("Cancelled", color="default", auto_hide=True)
         print("[VoxBridge] Recording cancelled.")
 
@@ -510,84 +447,119 @@ class VoxBridgeApp:
         max_sec = self.config["recording"]["max_duration"]
         print(f"[VoxBridge] Max recording duration reached ({max_sec}s)")
 
-        if audio is not None and len(audio) > 1600:
+        if audio is not None and len(audio) > MIN_AUDIO_SAMPLES:
             self._processing = True
             AppHelper.callAfter(
                 lambda: self._show_overlay(
                     f"⏱ Max {max_sec}s reached — processing...", color="warning"
                 )
             )
-            thread = threading.Thread(
+            threading.Thread(
                 target=self._process, args=(audio,), daemon=True
-            )
-            thread.start()
+            ).start()
+
+    def _on_press(self) -> None:
+        """Hotkey press handler - start recording."""
+        if not self._recording and not self._processing:
+            self._recording = True
+            self._show_overlay("Recording...", color="recording")
+            self.recorder.start()
+            if self._stt is not None:
+                self._start_live_preview()
+
+    def _on_release(self) -> None:
+        """Hotkey release handler - stop recording and process."""
+        if self._recording:
+            self._recording = False
+            self._stop_live_preview()
+            audio = self.recorder.stop()
+
+            if audio is not None and len(audio) > MIN_AUDIO_SAMPLES:
+                self._processing = True
+                threading.Thread(
+                    target=self._process, args=(audio,), daemon=True
+                ).start()
+            else:
+                self._show_overlay("Too short", color="default", auto_hide=True)
+
+    # --- Live preview ---
+
+    def _get_remaining_time(self) -> float:
+        """Return remaining recording time in seconds."""
+        max_duration = self.config["recording"]["max_duration"]
+        return max_duration - (time.time() - self._recording_start_time)
 
     def _start_live_preview(self) -> None:
         """Start periodic live transcription preview during recording."""
         self._last_preview_text = ""
         self._recording_start_time = time.time()
-        max_duration = self.config["recording"]["max_duration"]
 
-        def _get_remaining():
-            return max_duration - (time.time() - self._recording_start_time)
+        self._schedule_preview_tick()
+        self._schedule_countdown()
 
-        def _preview_tick():
-            if not self._recording:
-                return
-            snapshot = self.recorder.get_audio_snapshot()
-            if snapshot is not None and len(snapshot) > 8000:  # > 0.5s
-                try:
-                    text = self.stt.transcribe(
-                        snapshot, language=self.config.get("language")
-                    )
-                    if text and text.strip() and text != self._last_preview_text:
-                        self._last_preview_text = text
-                        remaining = _get_remaining()
-                        if remaining <= 10:
-                            suffix = f"\n⏱ {int(remaining)}s remaining"
-                            color = "warning"
-                        else:
-                            suffix = ""
-                            color = "recording"
-                        AppHelper.callAfter(
-                            lambda d=text, s=suffix, c=color: self._show_overlay(
-                                f"🎤 {d}{s}", color=c
-                            )
-                        )
-                except Exception:
-                    pass
-            # Schedule next tick
-            if self._recording:
-                self._live_preview_timer = threading.Timer(1.5, _preview_tick)
-                self._live_preview_timer.daemon = True
-                self._live_preview_timer.start()
-
-        # Start first tick after initial delay
-        self._live_preview_timer = threading.Timer(1.5, _preview_tick)
+    def _schedule_preview_tick(self) -> None:
+        """Schedule the next live preview STT tick."""
+        self._live_preview_timer = threading.Timer(
+            PREVIEW_INTERVAL_SEC, self._preview_tick
+        )
         self._live_preview_timer.daemon = True
         self._live_preview_timer.start()
 
-        # Countdown: fires every 1s during last 10 seconds
-        def _countdown_tick():
-            if not self._recording:
-                return
-            remaining = _get_remaining()
-            if remaining <= 10:
-                display_text = self._last_preview_text or "Recording..."
-                AppHelper.callAfter(
-                    lambda r=int(remaining), d=display_text: self._show_overlay(
-                        f"🎤 {d}\n⏱ {r}s remaining", color="warning"
-                    )
+    def _preview_tick(self) -> None:
+        """Run one live preview STT cycle."""
+        if not self._recording:
+            return
+        snapshot = self.recorder.get_audio_snapshot()
+        if snapshot is not None and len(snapshot) > MIN_PREVIEW_SAMPLES:
+            try:
+                text = self.stt.transcribe(
+                    snapshot, language=self.config.get("language")
                 )
-            if remaining > 0 and self._recording:
-                self._countdown_timer = threading.Timer(1.0, _countdown_tick)
-                self._countdown_timer.daemon = True
-                self._countdown_timer.start()
+                if text and text.strip() and text != self._last_preview_text:
+                    self._last_preview_text = text
+                    remaining = self._get_remaining_time()
+                    if remaining <= COUNTDOWN_START_SEC:
+                        suffix = f"\n⏱ {int(remaining)}s remaining"
+                        color = "warning"
+                    else:
+                        suffix = ""
+                        color = "recording"
+                    AppHelper.callAfter(
+                        lambda d=text, s=suffix, c=color: self._show_overlay(
+                            f"🎤 {d}{s}", color=c
+                        )
+                    )
+            except Exception:
+                pass
+        if self._recording:
+            self._schedule_preview_tick()
 
-        wait = max(0.0, max_duration - 10)
-        self._countdown_timer = threading.Timer(wait, _countdown_tick)
+    def _schedule_countdown(self) -> None:
+        """Schedule the countdown timer for the last N seconds."""
+        max_duration = self.config["recording"]["max_duration"]
+        wait = max(0.0, max_duration - COUNTDOWN_START_SEC)
+        self._countdown_timer = threading.Timer(wait, self._countdown_tick)
         self._countdown_timer.daemon = True
         self._countdown_timer.start()
+
+    def _countdown_tick(self) -> None:
+        """Show countdown in the last seconds of recording."""
+        if not self._recording:
+            return
+        remaining = self._get_remaining_time()
+        if remaining <= COUNTDOWN_START_SEC:
+            display_text = self._last_preview_text or "Recording..."
+            AppHelper.callAfter(
+                lambda r=int(remaining), d=display_text: self._show_overlay(
+                    f"🎤 {d}\n⏱ {r}s remaining", color="warning"
+                )
+            )
+        if remaining > 0 and self._recording:
+            self._countdown_timer = threading.Timer(
+                COUNTDOWN_INTERVAL_SEC, self._countdown_tick
+            )
+            self._countdown_timer.daemon = True
+            self._countdown_timer.start()
 
     def _stop_live_preview(self) -> None:
         """Stop live transcription preview and countdown."""
@@ -599,31 +571,7 @@ class VoxBridgeApp:
             self._countdown_timer = None
         self._last_preview_text = ""
 
-    def _on_press(self) -> None:
-        """Hotkey press handler - start recording."""
-        if not self._recording and not self._processing:
-            self._recording = True
-            self._show_overlay("Recording...", color="recording")
-            self.recorder.start()
-            # Start live preview if STT model is already loaded
-            if self._stt is not None:
-                self._start_live_preview()
-
-    def _on_release(self) -> None:
-        """Hotkey release handler - stop recording and process."""
-        if self._recording:
-            self._recording = False
-            self._stop_live_preview()
-            audio = self.recorder.stop()
-
-            if audio is not None and len(audio) > 1600:  # > 0.1s of audio
-                self._processing = True
-                thread = threading.Thread(
-                    target=self._process, args=(audio,), daemon=True
-                )
-                thread.start()
-            else:
-                self._show_overlay("Too short", color="default", auto_hide=True)
+    # --- Processing pipeline ---
 
     def _process(self, audio: np.ndarray) -> None:
         """Background: transcribe, format, inject."""
@@ -637,7 +585,7 @@ class VoxBridgeApp:
             AppHelper.callAfter(
                 lambda: self._show_overlay(stt_msg, color="default")
             )
-            language = self.config.get("language")  # None = auto-detect
+            language = self.config.get("language")
             text = self.stt.transcribe(audio, language=language)
             print(f"[STT] Raw: {text}")
 
@@ -650,7 +598,9 @@ class VoxBridgeApp:
                 return
 
             # Step 2: Format / Translate (optional)
-            format_level = self._get_effective_format_level()
+            format_level = prefs.get_format_level(
+                self.config["formatter"].get("enabled", True)
+            )
             if format_level == "on":
                 AppHelper.callAfter(
                     lambda: self._show_overlay("Formatting...", color="default")
@@ -696,6 +646,8 @@ class VoxBridgeApp:
         finally:
             self._processing = False
             print("[VoxBridge] Ready for next input.")
+
+    # --- Entry point ---
 
     def run(self) -> None:
         """Start the application (blocks on main thread)."""

@@ -52,6 +52,21 @@ class Formatter:
         models = self._fetch_tags()
         if models is None:
             return False
+        return self._has_model(models)
+
+    def check_status(self) -> tuple[bool, bool]:
+        """Check Ollama and model availability in a single call.
+
+        Returns:
+            (ollama_available, model_available)
+        """
+        tags = self._fetch_tags()
+        ollama_ok = tags is not None
+        model_ok = ollama_ok and self._has_model(tags)
+        return ollama_ok, model_ok
+
+    def _has_model(self, models: list) -> bool:
+        """Check if the configured model exists in the model list."""
         return any(
             m.get("name", "") == self.model
             or m.get("name", "").startswith(self.model + "-")

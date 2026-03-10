@@ -63,11 +63,14 @@ jobs:
 
       # Homebrew Tap を自動更新
       - name: Update Homebrew Tap
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set, skipping tap update"
+            exit 0
+          fi
           SHA256=$(cat dist/VoxBridge-${VERSION}-arm64.zip.sha256 | awk '{print $1}')
           echo "Updating homebrew-tap: version=${VERSION}, sha256=${SHA256}"
 

@@ -1,0 +1,24 @@
+name: Test Homebrew Tap Token
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify HOMEBREW_TAP_TOKEN can access homebrew-tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          # トークンで homebrew-tap の内容を読めるか確認 (書き込みはしない)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${GH_TOKEN}" \
+            "https://api.github.com/repos/keyiiiii/homebrew-tap/contents/Casks/voxbridge.rb")
+          echo "HTTP status: ${HTTP_CODE}"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Token is valid and has access to homebrew-tap"
+          else
+            echo "❌ Token is invalid or lacks repo scope (HTTP ${HTTP_CODE})"
+            exit 1
+          fi

@@ -45,6 +45,72 @@ def test_recorder():
     return audio
 
 
+def test_recorder_teardown():
+    """Test: a stream stop that never returns neither blocks nor leaks audio."""
+    print("\n=== Recorder teardown (no mic needed) ===")
+    import threading
+
+    import voxbridge.recorder as recorder_mod
+    from voxbridge.recorder import Recorder
+
+    created = []
+
+    class _HangingStream:
+        """Fake InputStream whose stop() deadlocks like CoreAudio does."""
+
+        def __init__(self, samplerate=16000, channels=1, dtype="float32",
+                     callback=None, **kwargs):
+            self.callback = callback
+            self.active = True
+            self.stop_called = threading.Event()
+            self.closed = False
+            created.append(self)
+
+        def emit(self, count=1):
+            for _ in range(count):
+                self.callback(np.zeros((512, 1), dtype=np.float32), 512, None, None)
+
+        def start(self):
+            self.emit(3)
+
+        def stop(self):
+            self.stop_called.set()
+            threading.Event().wait()  # never returns
+
+        def close(self):
+            self.closed = True
+
+    original = recorder_mod.sd.InputStream
+    recorder_mod.sd.InputStream = _HangingStream
+    try:
+        rec = Recorder(sample_rate=16000, max_duration=60, stop_timeout=0.2)
+
+        rec.start()
+        t0 = time.time()
+        first = rec.stop()
+        elapsed = time.time() - t0
+
+        assert created[0].stop_called.wait(1.0), "stream.stop() was never called"
+        assert elapsed < 2.0, f"stop() blocked for {elapsed:.1f}s"
+        assert not created[0].closed, "close() ran despite stop() hanging"
+        assert first is not None and len(first) == 1536, f"audio lost: {first}"
+        print(f"  stop() returned in {elapsed:.2f}s with {len(first)} samples")
+
+        # The abandoned stream keeps delivering frames - they must not land in
+        # the next recording's buffer.
+        created[0].emit(2)
+        rec.start()
+        second = rec.stop()
+        assert len(created) == 2, f"expected a fresh stream, got {len(created)}"
+        assert second is not None and len(second) == 1536, (
+            f"abandoned stream leaked into the next session: {len(second)} samples"
+        )
+        print(f"  next session isolated: {len(second)} samples")
+    finally:
+        recorder_mod.sd.InputStream = original
+    print("  OK")
+
+
 def test_stt(audio: np.ndarray | None = None):
     """Test: transcribe audio with faster-whisper."""
     print("\n=== STT ===")
@@ -117,6 +183,7 @@ if __name__ == "__main__":
     tests = {
         "config": test_config,
         "recorder": test_recorder,
+        "recorder_teardown": test_recorder_teardown,
         "stt": test_stt,
         "formatter": test_formatter,
         "injector": test_injector,
@@ -135,6 +202,7 @@ if __name__ == "__main__":
         print("VoxBridge Smoke Tests")
         print("=" * 40)
         test_config()
+        test_recorder_teardown()
         test_injector()
         print("\nTo run full pipeline: python -m tests.test_smoke full")
         print("To run specific test: python -m tests.test_smoke <name>")

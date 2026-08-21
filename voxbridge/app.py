@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 from AppKit import NSApplication, NSApplicationActivationPolicyAccessory, NSEvent, NSBundle
@@ -135,6 +136,14 @@ class VoxBridgeApp:
         # Lazy-loaded (heavy resources)
         self._stt: STT | None = None
         self._formatter: Formatter | None = None
+
+        # Every PortAudio call goes through this single worker: opening and
+        # closing the input stream blocks on CoreAudio, and doing that on the
+        # main thread froze the menu bar (Quit included) whenever the audio
+        # device deadlocked. One worker also keeps start/stop ordered.
+        self._audio_worker = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="voxbridge-audio"
+        )
 
         # State
         self._recording = False
@@ -430,10 +439,21 @@ class VoxBridgeApp:
     def _cancel_recording(self) -> None:
         """Cancel the current recording and discard audio."""
         self._recording = False
+        # Hold off a new recording until the stream is really closed.
+        self._processing = True
         self._stop_live_preview()
-        self.recorder.stop()
+        self._audio_worker.submit(self._discard_recording)
         self._show_overlay("Cancelled", color="default", auto_hide=True)
         print("[VoxBridge] Recording cancelled.")
+
+    def _discard_recording(self) -> None:
+        """Audio worker: close the stream and throw the audio away."""
+        try:
+            self.recorder.stop()
+        except Exception as e:
+            print(f"[VoxBridge] Recording stop failed: {e}")
+        finally:
+            self._processing = False
 
     def _show_overlay(self, text, color="default", auto_hide=False):
         """Show overlay if available (safe to call before UI init)."""
@@ -463,24 +483,65 @@ class VoxBridgeApp:
         if not self._recording and not self._processing:
             self._recording = True
             self._show_overlay("Recording...", color="recording")
+            self._audio_worker.submit(self._start_recording)
+
+    def _start_recording(self) -> None:
+        """Audio worker: open the input stream and begin the live preview."""
+        if not self._recording:
+            # Released before the stream was even opened - nothing to do.
+            return
+        try:
             self.recorder.start()
-            if self._stt is not None:
-                self._start_live_preview()
+        except Exception as e:
+            self._recording = False
+            msg = str(e)[:60]
+            print(f"[VoxBridge] Recording start failed: {e}")
+            AppHelper.callAfter(
+                lambda: self._show_overlay(
+                    f"Mic error: {msg}", color="error", auto_hide=True
+                )
+            )
+            return
+        if self._stt is not None:
+            self._start_live_preview()
 
     def _on_release(self) -> None:
         """Hotkey release handler - stop recording and process."""
         if self._recording:
             self._recording = False
+            # Claim the pipeline before handing off: a hotkey press landing
+            # while the stream is still closing would block on the recorder
+            # lock, and on the main thread that means a frozen UI.
+            self._processing = True
             self._stop_live_preview()
-            audio = self.recorder.stop()
+            self._audio_worker.submit(self._stop_and_process)
 
-            if audio is not None and len(audio) > MIN_AUDIO_SAMPLES:
-                self._processing = True
-                threading.Thread(
-                    target=self._process, args=(audio,), daemon=True
-                ).start()
-            else:
-                self._show_overlay("Too short", color="default", auto_hide=True)
+    def _stop_and_process(self) -> None:
+        """Audio worker: close the stream, then hand the audio to the pipeline."""
+        try:
+            audio = self.recorder.stop()
+        except Exception as e:
+            self._processing = False
+            msg = str(e)[:60]
+            print(f"[VoxBridge] Recording stop failed: {e}")
+            AppHelper.callAfter(
+                lambda: self._show_overlay(
+                    f"Mic error: {msg}", color="error", auto_hide=True
+                )
+            )
+            return
+
+        if audio is not None and len(audio) > MIN_AUDIO_SAMPLES:
+            threading.Thread(
+                target=self._process, args=(audio,), daemon=True
+            ).start()
+        else:
+            self._processing = False
+            AppHelper.callAfter(
+                lambda: self._show_overlay(
+                    "Too short", color="default", auto_hide=True
+                )
+            )
 
     # --- Live preview ---
 
